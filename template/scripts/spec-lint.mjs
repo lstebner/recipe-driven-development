@@ -4,13 +4,15 @@
 //   --fix          regenerate the "Used by" section of component, model and API specs, then lint
 //   --summary      status dashboard: specs, rules, tagged tests, open amendments, shared vs one-off
 //   --hash <Name>  print the fingerprint of a spec's protected content (goes in its /spec-verify report)
+//   --new <kind> <Name>  create a draft spec from specs/_templates/<kind>.md
+//   --scaffold     create a draft spec for every entry in specs/outline.md that doesn't have one yet
 //   --hook-pre     Claude Code PreToolUse hook (Edit/Write): ask the user before protected spec content
 //                  changes; only allow `verified` with a passing report, and then only after the user confirms
 //   --hook-bash    Claude Code PreToolUse hook (Bash): ask the user before a shell command that looks like it writes to specs/
 //   --hook-post    Claude Code PostToolUse hook: report lint errors back to Claude after a relevant edit
 //   --root <dir>   repo root (default: $CLAUDE_PROJECT_DIR, else the parent of this script's directory)
 import { createHash } from "node:crypto"
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -111,7 +113,37 @@ const loadAll = () => {
   const all = Object.entries(KINDS).flatMap(([kind, { dir }]) => listSpecs(path.join(specsDir, dir), kind))
   const tokensFile = path.join(specsDir, "tokens.md")
   const tokens = existsSync(tokensFile) ? loadSpec(tokensFile, "tokens") : null
-  return { all, tokens, components: all.filter((s) => s.kind === "component") }
+  return { all, tokens, outline: parseOutline(), components: all.filter((s) => s.kind === "component") }
+}
+
+// specs/outline.md: a quick list of everything planned, under ## Screens, ## Components, ## Flows,
+// ## Models and ## APIs. Each top-level bullet is "- Name" or "- Name: a line about it".
+const outlineFile = path.join(specsDir, "outline.md")
+const OUTLINE_HEADINGS = "## Screens, ## Components, ## Flows, ## Models or ## APIs"
+const parseOutline = () => {
+  if (!existsSync(outlineFile)) return null
+  const entries = []
+  const problems = []
+  // Read sections in order rather than by name, so a heading that appears twice keeps both lists.
+  const sections = []
+  stripNoise(normalize(readFileSync(outlineFile, "utf8"))).split("\n").forEach((text, index) => {
+    const heading = /^## (.+?)\s*$/.exec(text)
+    if (heading) sections.push({ name: heading[1], line: index + 1, lines: [] })
+    else sections.at(-1)?.lines.push({ n: index + 1, text })
+  })
+  for (const section of sections) {
+    const kind = section.name.toLowerCase().replace(/s$/, "")
+    if (!KINDS[kind]) {
+      problems.push({ n: section.line, message: `unknown section "## ${section.name}" (expected ${OUTLINE_HEADINGS})` })
+      continue
+    }
+    for (const line of section.lines.filter((l) => /^[-*]\s+/.test(l.text))) {
+      const match = /^[-*]\s+[*`]*([A-Za-z]\w*)[*`]*\s*(?:(?::|—|–|\s-\s)\s*(.*))?$/.exec(line.text.trim())
+      if (match) entries.push({ n: line.n, kind, heading: section.name, name: match[1], note: (match[2] ?? "").trim() })
+      else problems.push({ n: line.n, message: `"${line.text.trim().replace(/^[-*]\s+/, "")}" isn't a spec name — write one word like AlbumDetail, optionally followed by ": a line about it"` })
+    }
+  }
+  return { entries, problems }
 }
 
 // Scan a set of sections line by line with a global regex.
@@ -207,7 +239,7 @@ const checkReport = (spec) => {
 
 // ---------- linting ----------
 
-const lint = ({ all, tokens }) => {
+const lint = ({ all, tokens, outline }) => {
   const problems = []
   const report = (level, spec, n, message) => problems.push({ level, file: rel(spec.file), n, message })
   const byName = new Map()
@@ -372,6 +404,20 @@ const lint = ({ all, tokens }) => {
     if (fm.status === "verified") for (const problem of checkReport(spec).problems) report("error", spec, 1, `status is verified but ${problem}`)
   }
 
+  // The outline: well-formed, no duplicates, and each entry matches the kind of spec it became.
+  if (outline) {
+    const note = (level, n, message) => problems.push({ level, file: rel(outlineFile), n, message })
+    for (const p of outline.problems) note("error", p.n, p.message)
+    const listed = new Set()
+    for (const entry of outline.entries) {
+      if (listed.has(entry.name)) note("error", entry.n, `${entry.name} is listed more than once`)
+      listed.add(entry.name)
+      const spec = byName.get(entry.name)
+      if (!spec) note("warning", entry.n, `${entry.name} has no spec yet — run: node scripts/spec-lint.mjs --scaffold`)
+      else if (spec.kind !== entry.kind) note("error", entry.n, `${entry.name} is listed under ## ${entry.heading} but ${rel(spec.file)} is a ${spec.kind} spec`)
+    }
+  }
+
   // Used by must match what's generated.
   for (const spec of all.filter((s) => KINDS[s.kind].usedBy)) {
     const expected = usedByLines(spec, usersOf)
@@ -448,6 +494,57 @@ const summary = (specs) => {
   if (localOwners.size === 0) out.push("  (none)")
   for (const [name, owners] of localOwners) out.push(`  ~${name.padEnd(widths[0] - 1)}  in ${owners.map((s) => s.name).join(", ")}${owners.length > 1 ? "  ⚠ in more than one spec" : ""}`)
   return out.join("\n")
+}
+
+// ---------- scaffolding ----------
+
+const PLACEHOLDERS = { screen: "ScreenName", component: "ComponentName", flow: "FlowName", model: "ModelName", api: "ApiName" }
+const HTTP_ENDPOINT = /^((?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+)\s*(?:(?:—|–|-|:)\s*)?(.*)$/i
+
+// Create a draft spec from its template. `note` is the user's own one-liner from the outline: it becomes
+// the Goal or Purpose (for an API, a leading "GET /path" becomes the endpoint). Nothing else is filled in.
+const newSpec = (kind, name, note = "") => {
+  if (!KINDS[kind]) return { error: `unknown kind "${kind ?? ""}" (expected ${Object.keys(KINDS).join(" | ")})` }
+  if (!/^[A-Za-z]\w*$/.test(name ?? "")) return { error: `"${name ?? ""}" isn't a valid spec name — use one word like AlbumDetail` }
+  const file = path.join(specsDir, KINDS[kind].dir, `${name}.md`)
+  const taken = loadAll().all.find((s) => s.name === name)
+  if (taken) return taken.kind === kind ? { kept: file } : { error: `the name ${name} is already taken by ${rel(taken.file)}` }
+  const template = path.join(specsDir, "_templates", `${kind}.md`)
+  if (!existsSync(template)) return { error: `there's no template at ${rel(template)}` }
+  let text = normalize(readFileSync(template, "utf8")).split(PLACEHOLDERS[kind]).join(name)
+  let summary = note
+  const http = kind === "api" ? HTTP_ENDPOINT.exec(note) : null
+  if (http) {
+    text = text.replace(/^endpoint:.*$/m, `endpoint: ${http[1].replace(/^\S+/, (method) => method.toUpperCase())}`)
+    summary = http[2].trim()
+  }
+  if (summary) {
+    const heading = KINDS[kind].required[0]
+    text = text.replace(new RegExp(`^## ${heading}\\n(?:<!--[\\s\\S]*?-->\\n)?`, "m"), () => `## ${heading}\n${summary}\n`)
+  }
+  mkdirSync(path.dirname(file), { recursive: true })
+  writeFileSync(file, text)
+  return { created: file }
+}
+
+const printResult = (result) => {
+  if (result.created) console.log(`  create  ${rel(result.created)}`)
+  else if (result.kept) console.log(`  keep    ${rel(result.kept)}`)
+  else console.error(`  error   ${result.error}`)
+}
+
+const scaffold = () => {
+  const outline = parseOutline()
+  if (!outline) {
+    console.error(`no outline at ${rel(outlineFile)}`)
+    return 1
+  }
+  for (const p of outline.problems) console.error(`  error   ${rel(outlineFile)}:${p.n}  ${p.message}`)
+  const results = outline.entries.map((entry) => newSpec(entry.kind, entry.name, entry.note))
+  results.forEach(printResult)
+  const created = results.filter((r) => r.created).length
+  console.log(`${created} spec(s) created, ${results.filter((r) => r.kept).length} already existed`)
+  return outline.problems.length || results.some((r) => r.error) ? 1 : 0
 }
 
 // ---------- hooks ----------
@@ -561,6 +658,11 @@ if (has("--hook-pre")) hookPre()
 else if (has("--hook-bash")) hookBash()
 else if (has("--hook-post")) hookPost()
 else if (!existsSync(specsDir)) console.log(`no specs/ directory under ${root}`)
+else if (has("--new")) {
+  const result = newSpec(argOf("--new"), args[args.indexOf("--new") + 2])
+  printResult(result)
+  process.exit(result.error ? 1 : 0)
+} else if (has("--scaffold")) process.exit(scaffold())
 else if (has("--hash")) {
   const spec = loadAll().all.find((s) => s.name === argOf("--hash"))
   if (!spec) {

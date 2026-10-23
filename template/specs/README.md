@@ -9,6 +9,7 @@ you've tasted it: a spec only becomes `verified` when you confirm the result is 
 ```
 specs/
   README.md        this file: the spec format
+  outline.md       a quick list of everything planned; --scaffold turns it into draft specs
   tokens.md        design tokens (colors, spacing, type)
   screens/         one file per screen             e.g. screens/AlbumDetail.md
   components/      one file per shared component   e.g. components/PrimaryButton.md
@@ -22,6 +23,35 @@ specs/
 Only new work gets specs. Code without a spec isn't checked. Spec names must be unique across
 all of `specs/` (a screen and a model can't both be called `Album`), because rule IDs and reports
 are keyed by name.
+
+## Starting specs
+
+Writing the recipe is your job, but the boilerplate isn't. Two commands create empty drafts:
+
+- `node scripts/spec-lint.mjs --new screen AlbumDetail`: one draft spec from its template, with
+  the name filled in. Kinds: `screen`, `component`, `flow`, `model`, `api`.
+- `node scripts/spec-lint.mjs --scaffold`: one draft for every entry in `outline.md` that doesn't
+  have a spec yet. Existing specs are never touched, so run it as often as you like.
+
+The outline is for sketching the whole project quickly:
+
+```markdown
+## Screens
+- AlbumDetail: let a listener see an album and buy it
+- Library
+## Components
+- ArtistBadge
+## Models
+- Album
+- Artist
+## APIs
+- GetAlbum: GET /albums/{id} — fetch one album
+```
+
+The text after the colon is yours, so it goes into the draft's Goal or Purpose (and for an API, a
+leading `GET /path` becomes its `endpoint`). Everything else in the draft is left for you to write.
+Lint warns about outline entries that don't have a spec yet, and errors if an entry's section
+doesn't match the kind of spec it became.
 
 ## Lifecycle
 
@@ -333,6 +363,8 @@ an entry under `## Open amendments` and pauses any work that depends on it:
 - `node scripts/spec-lint.mjs`: validate everything (also runs automatically after Claude edits).
 - `node scripts/spec-lint.mjs --fix`: regenerate `Used by`.
 - `node scripts/spec-lint.mjs --summary`: dashboard of status, rule/test coverage, open amendments, and what's shared vs one-off.
+- `node scripts/spec-lint.mjs --new <kind> <Name>`: create one draft spec from its template.
+- `node scripts/spec-lint.mjs --scaffold`: create a draft for every outline entry without a spec.
 - `node scripts/spec-lint.mjs --hash <Name>`: the spec's fingerprint, which `/spec-verify` stamps into its report.
 - `/spec-review <Name>`: Claude critiques a spec before it's built.
 - `/spec-verify <Name>`: Claude checks the implementation rule by rule, writes `_reports/<Name>.md`, and then asks you to taste it.

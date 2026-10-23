@@ -306,6 +306,63 @@ bash_quiet "spec-lint --fix is quiet"    "node scripts/spec-lint.mjs --fix"
 bash_quiet "writing a report is quiet"   "cat tmp.md > specs/_reports/AlbumDetail.md"
 bash_quiet "unrelated rm is quiet"       "rm -rf build/out"
 
+echo "scaffolding"
+[[ -f "$repo/specs/outline.md" ]] && pass "install adds an outline" || fail "outline installed" "$(ls "$repo/specs")"
+new_spec() { node "$repo/scripts/spec-lint.mjs" --root "$repo" --new "$@" 2>&1; }
+out="$(new_spec screen Library)"
+grep -q "^screen: Library$" "$repo/specs/screens/Library.md" && grep -q "^status: draft$" "$repo/specs/screens/Library.md" && grep -q "Library.R1" "$repo/specs/screens/Library.md" \
+  && pass "--new creates a named draft from the template" || fail "--new" "$out"
+expect_ok "  ...which lints clean"
+out="$(new_spec screen Library)"; code=$?
+[[ $code -eq 0 && "$out" == *keep* ]] && pass "--new keeps an existing spec" || fail "--new existing" "$out"
+out="$(new_spec model AlbumDetail)"; code=$?
+[[ $code -eq 1 && "$out" == *"already taken by specs/screens/AlbumDetail.md"* ]] && pass "--new refuses a name taken by another kind" || fail "--new taken" "$out"
+out="$(new_spec widget Thing)"; [[ $? -eq 1 && "$out" == *'unknown kind "widget"'* ]] && pass "--new rejects an unknown kind" || fail "--new kind" "$out"
+out="$(new_spec screen 9Lives)"; [[ $? -eq 1 && "$out" == *"isn't a valid spec name"* ]] && pass "--new rejects an invalid name" || fail "--new name" "$out"
+rm "$repo/specs/screens/Library.md"
+
+cp "$repo/specs/outline.md" "$repo/specs/outline.md.orig"
+cat > "$repo/specs/outline.md" <<'EOF'
+# Outline
+## Screens
+- AlbumDetail
+- ArtistPage: let a listener browse everything by one artist
+  - maybe a "follow" button? (my own note)
+## Components
+- ArtistBadge
+- TrackRow
+## Flows
+- Onboarding
+## Models
+- Artist
+## APIs
+- GetArtist: GET /artists/{id} — fetch one artist
+## Screens
+- NowPlaying
+EOF
+scaffold() { node "$repo/scripts/spec-lint.mjs" --root "$repo" --scaffold 2>&1; }
+out="$(scaffold)"; code=$?
+[[ $code -eq 0 && "$out" == *"6 spec(s) created, 2 already existed"* ]] && pass "--scaffold creates a draft per new entry" || fail "--scaffold" "$out"
+grep -q "^let a listener browse everything by one artist$" "$repo/specs/screens/ArtistPage.md" && ! grep -q "follow" "$repo/specs/screens/ArtistPage.md" \
+  && pass "  ...the entry's note becomes the Goal; nested notes stay in the outline" || fail "scaffold note" "$(cat "$repo/specs/screens/ArtistPage.md")"
+[[ -f "$repo/specs/screens/NowPlaying.md" ]] && pass "  ...including entries under a repeated heading" || fail "repeated heading" "$out"
+grep -q "^endpoint: GET /artists/{id}$" "$repo/specs/apis/GetArtist.md" && grep -q "^fetch one artist$" "$repo/specs/apis/GetArtist.md" \
+  && pass "  ...an API's leading endpoint fills in endpoint" || fail "scaffold endpoint" "$(cat "$repo/specs/apis/GetArtist.md")"
+grep -q "^The ArtistBadge.$" "$repo/specs/components/ArtistBadge.md" && ! grep -q "^## Props" "$repo/specs/components/ArtistBadge.md" \
+  && pass "  ...and existing specs are left alone" || fail "scaffold existing" "$(cat "$repo/specs/components/ArtistBadge.md")"
+expect_ok "scaffolded drafts lint clean"
+out="$(scaffold)"; [[ "$out" == *"0 spec(s) created, 8 already existed"* ]] && pass "--scaffold is idempotent" || fail "--scaffold idempotent" "$out"
+echo "- Settings" >> "$repo/specs/outline.md"
+expect_warn "an outline entry without a spec warns" "Settings has no spec yet"
+outline="$repo/specs/outline.md"
+mutate_in "$outline" "outline entry under the wrong section" expect_err "listed under ## APIs but specs/models/Artist.md is a model spec" 's/^- Artist$/- Placeholder/; s/^- GetArtist:.*/- Artist/'
+mutate_in "$outline" "outline entry that isn't a name"      expect_err "isn't a spec name"                 's/^- TrackRow$/- Track row in a list/'
+mutate_in "$outline" "outline section that isn't a kind"    expect_err 'unknown section "## Widgets"'     's/^## Flows$/## Widgets/'
+mutate_in "$outline" "outline entry listed twice"           expect_err "TrackRow is listed more than once" 's/^- Onboarding$/- TrackRow/'
+bash_quiet "--scaffold is quiet to the shell hook" "node scripts/spec-lint.mjs --scaffold"
+rm "$repo"/specs/screens/ArtistPage.md "$repo"/specs/components/TrackRow.md "$repo"/specs/flows/Onboarding.md "$repo"/specs/models/Artist.md "$repo"/specs/apis/GetArtist.md "$repo"/specs/screens/NowPlaying.md
+mv "$repo/specs/outline.md.orig" "$repo/specs/outline.md"
+
 echo "post hook"
 out="$(hook post "$(edit_json "$screen" x y)")"; code=$?
 [[ $code -eq 0 && -z "$out" ]] && pass "post: clean tree is silent" || fail "post: clean" "$out"

@@ -22,7 +22,7 @@ copy() { # copy <src> <dest> [refreshable]
 }
 
 echo "Installing Recipe-Driven Development into $target"
-for f in README.md tokens.md _templates/{screen,component,flow,model,api}.md; do
+for f in README.md tokens.md outline.md _templates/{screen,component,flow,model,api}.md; do
   copy "$tpl/specs/$f" "$target/specs/$f"
 done
 mkdir -p "$target"/specs/{screens,components,flows,models,apis,_reports}
@@ -78,4 +78,5 @@ else
   echo "  append  CLAUDE.md"
 fi
 
-echo "Done. Start a spec with: cp specs/_templates/screen.md specs/screens/<Name>.md"
+echo "Done. List what you need in specs/outline.md and run: node scripts/spec-lint.mjs --scaffold"
+echo "     Or start one spec with:   node scripts/spec-lint.mjs --new screen <Name>"

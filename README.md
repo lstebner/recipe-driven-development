@@ -22,9 +22,10 @@ What gets installed into the repo:
 | path | what it is |
 |---|---|
 | `specs/README.md` | the spec format: lifecycle, tasting, each kind of spec, references, layout grammar, rules, amendments |
+| `specs/outline.md` | a quick list of every screen, component, flow, model and API you know you'll need; `--scaffold` turns it into draft specs |
 | `specs/_templates/` | `screen.md`, `component.md`, `flow.md`, `model.md`, `api.md` |
 | `specs/tokens.md` | design tokens, referenced as `$name` |
-| `scripts/spec-lint.mjs` | lint (`--fix` regenerates Used by, `--summary` prints a dashboard, `--hash` fingerprints a spec); also the hook entry point. Node ≥ 18, no dependencies |
+| `scripts/spec-lint.mjs` | lint (`--fix` regenerates Used by, `--summary` prints a dashboard, `--hash` fingerprints a spec), scaffolding (`--new <kind> <Name>`, `--scaffold` from the outline); also the hook entry point. Node ≥ 18, no dependencies |
 | `.claude/settings.json` | **PreToolUse** hooks ask you before protected content in a non-draft spec changes, before a shell command that looks like it writes to `specs/`, and before anything is marked `verified` (which is refused outright without a passing report). A **PostToolUse** hook sends lint errors back to Claude |
 | `.claude/skills/spec-review`, `spec-verify` | `/spec-review <Name>`, `/spec-verify <Name>` |
 | `CLAUDE.md` | rules block between `rdd:start` and `rdd:end` markers |
