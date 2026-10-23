@@ -180,12 +180,13 @@ const typedRefsOf = (spec) =>
 const membersOf = (spec) =>
   spec.kind === "model" ? tableKeys(spec.sections.fields).map((k) => k.key) : spec.kind === "api" ? tableKeys(spec.sections.errors).map((k) => k.key) : []
 
+// A rule is "- R1: ..." or "- AlbumDetail.R1: ..."; either way its full ID is AlbumDetail.R1.
 const rulesOf = (spec) =>
   (spec.sections.rules?.lines ?? [])
     .filter((l) => /^[-*]\s+/.test(l.text))
     .map((l) => {
-      const match = /^[-*]\s+\**([A-Za-z]\w*)\.R(\d+)\**\s*:/.exec(l.text)
-      return { n: l.n, text: l.text, prefix: match?.[1], id: match ? `${match[1]}.R${match[2]}` : null, short: match ? `R${match[2]}` : null }
+      const match = /^[-*]\s+\**(?:([A-Za-z]\w*)\.)?R(\d+)\**\s*:/.exec(l.text)
+      return { n: l.n, text: l.text, prefix: match?.[1], id: match ? `${spec.name}.R${match[2]}` : null, short: match ? `R${match[2]}` : null }
     })
 
 const stepsOf = (spec) =>
@@ -197,6 +198,16 @@ const variantsOf = (spec) =>
     .filter(Boolean)
 
 const amendmentsOf = (spec) => (stripNoise(spec.raw).match(/^## Open amendments\s*\n([\s\S]*?)(?=^## |$(?![\s\S]))/m)?.[1].match(/^### /gm) ?? []).length
+
+// Open amendments as { id, title, change }, from "### A1: title" blocks and their "- Change:" line.
+const openAmendments = (text) =>
+  (stripNoise(normalize(text)).match(/^## Open amendments\s*\n([\s\S]*?)(?=^## |$(?![\s\S]))/m)?.[1] ?? "")
+    .split(/^(?=### )/m)
+    .map((block) => {
+      const head = /^### (A\d+)\s*:?\s*(.*)$/m.exec(block)
+      return head && { id: head[1], title: head[2].trim(), change: /^[-*]\s*Change:\s*(.*)$/m.exec(block)?.[1].trim() }
+    })
+    .filter(Boolean)
 
 // ---------- fingerprint & reports ----------
 
@@ -218,11 +229,11 @@ const specHash = (text) => {
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 12)
 }
 
-// A report passes when it's stamped with the spec's current fingerprint, has a ✅ row for every rule,
-// and no row anywhere is ❌ or ⚠️.
+// A report passes when it's stamped with the spec's current fingerprint, has a ✅ or 👤 row for every rule,
+// and no row anywhere is ❌ or ⚠️. 👤 means "only a human can check this": it's left for the taste test.
 const checkReport = (spec) => {
   const file = path.join(specsDir, "_reports", `${spec.name}.md`)
-  if (!existsSync(file)) return { file, problems: [`there's no report at ${rel(file)}; run /spec-verify ${spec.name}`], passed: 0, total: 0 }
+  if (!existsSync(file)) return { file, problems: [`there's no report at ${rel(file)}; run /spec-verify ${spec.name}`], passed: 0, total: 0, taste: [] }
   const lines = normalize(readFileSync(file, "utf8")).split("\n")
   const problems = []
   const hash = specHash(spec.raw)
@@ -231,10 +242,12 @@ const checkReport = (spec) => {
   else if (stamp !== hash) problems.push(`${rel(file)} was written for an older version of the spec (Spec: ${stamp}, now ${hash}); set status: implemented and re-run /spec-verify ${spec.name}`)
   const rows = lines.filter((l) => isTableRow(l) && !isSeparator(l)).map(cellsOf)
   for (const row of rows) if (/❌|⚠/.test(row[1] ?? "")) problems.push(`${rel(file)} marks ${row[0]} as ${row[1]}`)
-  const ids = rulesOf(spec).map((r) => r.id).filter(Boolean)
-  const passed = ids.filter((id) => rows.some((r) => r[0].replace(/`/g, "") === id && (r[1] ?? "").includes("✅")))
-  for (const id of ids) if (!passed.includes(id)) problems.push(`${rel(file)} has no ✅ row for ${id}`)
-  return { file, problems, passed: passed.length, total: ids.length }
+  const rules = rulesOf(spec).filter((r) => r.id)
+  const rowFor = (rule, mark) => rows.some((r) => [rule.id, rule.short].includes(r[0].replace(/`/g, "")) && (r[1] ?? "").includes(mark))
+  const passed = rules.filter((rule) => rowFor(rule, "✅"))
+  for (const rule of rules) if (!passed.includes(rule) && !rowFor(rule, "👤")) problems.push(`${rel(file)} has no ✅ or 👤 row for ${rule.id}`)
+  const taste = rows.filter((r) => (r[1] ?? "").includes("👤")).map((r) => r[0].replace(/`/g, ""))
+  return { file, problems, passed: passed.length, total: rules.length, taste }
 }
 
 // ---------- linting ----------
@@ -270,12 +283,12 @@ const lint = ({ all, tokens, outline }) => {
       else if (!found.lines.some((l) => l.text.trim())) report(incomplete, spec, found.line, `section "## ${section}" is empty`)
     }
 
-    // Rules: every top-level bullet needs a unique ID prefixed with the spec's name.
+    // Rules: every top-level bullet needs a unique ID; a prefix, if given, must be the spec's own name.
     const rules = rulesOf(spec)
     const seen = new Set()
     for (const rule of rules) {
-      if (!rule.id) report("error", spec, rule.n, `rule has no ID — write it as "- ${spec.name}.R<n>: ..."`)
-      else if (rule.prefix !== spec.name) report("error", spec, rule.n, `rule ${rule.id} must be prefixed with "${spec.name}."`)
+      if (!rule.id) report("error", spec, rule.n, `rule has no ID — write it as "- R<n>: ..."`)
+      else if (rule.prefix && rule.prefix !== spec.name) report("error", spec, rule.n, `rule ${rule.prefix}.${rule.short} belongs to another spec — write it as "- ${rule.short}: ..."`)
       else if (seen.has(rule.short)) report("error", spec, rule.n, `duplicate rule ID ${rule.id}`)
       seen.add(rule.short)
     }
@@ -312,8 +325,9 @@ const lint = ({ all, tokens, outline }) => {
     const refs = refsOf(spec)
     const shared = new Set(refs.filter((r) => !r.local).map((r) => r.name))
     const local = new Set(refs.filter((r) => r.local).map((r) => r.name))
-    const uses = new Set(asList(fm.uses))
-    const declaredLocal = new Set(asList(fm.local))
+    // "uses" and "local" are optional: left out, the layout is the list. Written out, they must match it.
+    const uses = new Set(fm.uses === undefined ? shared : asList(fm.uses))
+    const declaredLocal = new Set(fm.local === undefined ? local : asList(fm.local))
     for (const ref of refs) {
       if (ref.local) {
         if (componentNames.has(ref.name)) report("error", spec, ref.n, `[[~${ref.name}]] is marked one-off but a shared spec exists — use [[${ref.name}]] or rename the one-off`)
@@ -595,11 +609,12 @@ const hookPre = () => {
   // Marking verified is the taste test: Claude needs a passing report, and then the user has the final say.
   if (to === "verified" && from !== "verified" && kind !== "tokens") {
     const name = path.basename(file, ".md")
-    const { file: reportFile, problems, passed, total } = checkReport(parseSpec(after, file, kind))
+    const { file: reportFile, problems, passed, total, taste } = checkReport(parseSpec(after, file, kind))
     if (problems.length) return decide("deny", `${name} can't be marked verified yet: ${problems.join("; ")}.`)
     return decide(
       "ask",
-      `Taste test: ${rel(reportFile)} shows ${passed}/${total} rules of ${name} passing. ` +
+      `Taste test: ${rel(reportFile)} shows ${passed}/${total} rules of ${name} passing` +
+        `${taste.length ? `, and leaves ${taste.join(", ")} for you to check by hand` : ""}. ` +
         `Approve if you've tried it and it's what you meant; deny and tell Claude what's off if not.`,
     )
   }
@@ -615,6 +630,16 @@ const hookPre = () => {
     const { status: s2, source: src2, ...rest2 } = newFm
     const progressOnly = JSON.stringify(rest1) === JSON.stringify(rest2) && (s1 === s2 || (CLAUDE_STATUSES.includes(s1) && CLAUDE_STATUSES.includes(s2) && s2 !== "approved"))
     if (progressOnly) return
+  }
+  // Applying an amendment removes it from Open amendments; this prompt is where the user accepts it.
+  const stillOpen = new Set(openAmendments(after).map((a) => a.id))
+  const applied = openAmendments(before).filter((a) => !stillOpen.has(a.id))
+  if (applied.length) {
+    return decide(
+      "ask",
+      `Accept ${applied.map((a) => `amendment ${a.id} (${a.title})${a.change ? `: ${a.change}` : ""}`).join("; ")}? ` +
+        `This changes ${rel(file)}, touching: ${changed.join(", ")}. Approve to accept; deny to leave it open, and tell Claude if you'd rather reject it.`,
+    )
   }
   decide(
     "ask",

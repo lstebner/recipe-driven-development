@@ -2,20 +2,46 @@
 
 A workflow for building with AI coding tools, borrowed from the kitchen:
 
-- **You're the head chef.** You write the recipe: a spec in constrained markdown that says what
-  a screen, component, flow, data model or API should be, with rules that can be checked.
+- **You're the head chef.** You decide what goes on the menu. Each recipe is a spec in
+  constrained markdown that says what a screen, component, flow, data model or API should be,
+  with rules that can be checked. Claude can draft them for you, but nothing is built until you
+  approve the recipe.
 - **The AI is the cook.** Claude Code reviews the recipe, builds against it and checks its own
   work against it. It can't change an approved recipe without your sign-off: if it finds a
-  problem, it proposes an amendment and waits for you.
+  problem, it proposes an amendment and you accept or reject it with one click.
 - **You taste it.** Nothing is done until you say so. Claude can only mark a spec `verified`
   with a report showing every rule passing, and even then you're asked to confirm right in the
   session. You never have to leave your flow to edit a file.
 
+## A day in the kitchen
+
+1. **List the menu.** Jot what you need in `specs/outline.md`, one line each, or tell Claude.
+2. **Draft the recipes.** `/spec-new AlbumDetail: let a listener buy an album` adds it to the
+   outline and drafts it from what you've said. `/spec-new` on its own drafts everything in the
+   outline that has no spec yet.
+3. **Review.** `/spec-review AlbumDetail` lists what's vague or missing, with wording to fix it.
+   Reply "apply 1, 3" or edit the spec yourself.
+4. **Approve.** Say "approve AlbumDetail". Claude sets the status and you confirm the prompt.
+   From here the spec is locked.
+5. **Cook.** "Build AlbumDetail." If Claude finds the spec is wrong, it writes an amendment and
+   asks you to accept it. That prompt is your one decision.
+6. **Check.** `/spec-verify AlbumDetail` checks every rule and writes a report. Rules only a
+   person can judge are left for you.
+7. **Taste.** Claude tells you what to try, then asks you to confirm. Yes: `verified`. No: say
+   what's off and it goes back on the stove.
+
 ```
-./install.sh <repo>            # adds specs/, scripts/spec-lint.mjs, two skills, hooks, CLAUDE.md rules
+./install.sh <repo>            # adds specs/, scripts/spec-lint.mjs, three skills, hooks, CLAUDE.md rules
 ./install.sh <repo> --update   # also refreshes spec-lint.mjs, the skills and the CLAUDE.md rules
 ./test/run.sh                  # end-to-end check in a throwaway repo
 ```
+
+**Keep permission prompts on.** Your sign-off is a Claude Code permission prompt. Under modes
+that skip prompts, the "ask" may never reach you, and the locks quietly stop working.
+
+The spec kinds (screen, component, flow, model, API) are shaped for apps with a UI and a
+backend. CLIs, libraries and background jobs fit less well; a model or API spec usually comes
+closest.
 
 What gets installed into the repo:
 
@@ -26,10 +52,10 @@ What gets installed into the repo:
 | `specs/_templates/` | `screen.md`, `component.md`, `flow.md`, `model.md`, `api.md` |
 | `specs/tokens.md` | design tokens, referenced as `$name` |
 | `scripts/spec-lint.mjs` | lint (`--fix` regenerates Used by, `--summary` prints a dashboard, `--hash` fingerprints a spec), scaffolding (`--new <kind> <Name>`, `--scaffold` from the outline); also the hook entry point. Node ≥ 18, no dependencies |
-| `.claude/settings.json` | **PreToolUse** hooks ask you before protected content in a non-draft spec changes, before a shell command that looks like it writes to `specs/`, and before anything is marked `verified` (which is refused outright without a passing report). A **PostToolUse** hook sends lint errors back to Claude |
-| `.claude/skills/spec-review`, `spec-verify` | `/spec-review <Name>`, `/spec-verify <Name>` |
+| `.claude/settings.json` | **PreToolUse** hooks ask you before protected content in a non-draft spec changes (naming the amendment when Claude applies one), before a shell command that looks like it writes to `specs/`, and before anything is marked `verified` (which is refused outright without a passing report). A **PostToolUse** hook sends lint errors back to Claude |
+| `.claude/skills/spec-new`, `spec-review`, `spec-verify` | `/spec-new [kind] <Name>[: what it's for]`, `/spec-review <Name>`, `/spec-verify <Name>` |
 | `CLAUDE.md` | rules block between `rdd:start` and `rdd:end` markers |
 
 Limits: the shell-command hook is a heuristic. It catches the usual ways of writing files
 (`sed -i`, redirects, `mv`, `cp`, `rm`, `tee`, inline scripts and so on), but a determined command
-can still get past it. Under permission modes that skip prompts, the "ask" may not reach you.
+can still get past it.

@@ -12,12 +12,16 @@ they don't need to read the code.
 
 ## Ground rules
 
-- The spec is the artistity. If the code and the spec disagree, it's a ❌. Don't reinterpret
+- The spec is the authority. If the code and the spec disagree, it's a ❌. Don't reinterpret
   the rule so it passes, and don't change a test to make it pass.
 - If a ❌ suggests the spec itself is wrong, say so in the report and propose an amendment
   (under `## Open amendments`, per `specs/README.md`). Don't edit the spec's protected sections.
 - ✅ needs evidence: a file:line, a passing test name, a screenshot, or a request and its response.
-  If you couldn't check something, mark it ⚠️ unverified and give the reason.
+- 👤 is for what only a person can judge: whether it looks right, how it feels on a real device,
+  whether the copy reads well. Say what to look at. It doesn't block `verified`; it goes on the
+  user's list of things to try.
+- ⚠️ is for something you could check but didn't (a simulator wouldn't start, a service was
+  down). Give the reason. It blocks `verified` until it's checked. Never use 👤 to get past one.
 - Only the user can say it tastes right. A clean report earns the right to *ask*; see step 7.
 
 ## Steps
@@ -46,9 +50,9 @@ they don't need to read the code.
 6. Get the fingerprint with `node scripts/spec-lint.mjs --hash <Name>`, then write
    `specs/_reports/<Name>.md` (overwrite it) and show the user the summary table.
 7. **Status.** If the spec was `approved`, you may set `implemented` once it's built. If every
-   rule is ✅, no row is ❌ or ⚠️ and lint is clean, propose the taste test:
-   - Tell the user in 2–5 bullets **what to try** to taste it themselves: the screens, inputs or
-     calls that exercise the rules most likely to be subtly wrong.
+   rule is ✅ or 👤, no row is ❌ or ⚠️ and lint is clean, propose the taste test:
+   - Tell the user in 2–5 bullets **what to try** to taste it themselves: every 👤 row first,
+     then the screens, inputs or calls that exercise the rules most likely to be subtly wrong.
    - Then set `status: verified`. The hook re-checks the report and asks the user to confirm. If
      they deny it, ask what's off: it's either a bug to fix or an amendment to the spec.
    - Never set `approved`, and never edit the report to make the hook accept it.
@@ -63,6 +67,7 @@ Date: YYYY-MM-DD · Spec: 3f9a1c0b7e2d · Status: implemented · Lint: clean
 |---|---|---|
 | AlbumDetail.R1 | ✅ | test "[AlbumDetail.R1] hides buy when owned" passes; page.tsx:42 |
 | AlbumDetail.R2 | ❌ | timeline renders oldest first (screenshot md-default.png) |
+| AlbumDetail.R3 | 👤 | spinner timing: tap Buy on a slow connection and check it feels immediate |
 | Layout | ⚠️ | <md breakpoint not checked: simulator unavailable |
 | Copy | ✅ | 4/4 keys found verbatim |
 | Shared components | ✅ | ArtistBadge, PrimaryButton imported from packages/ui |
@@ -76,4 +81,4 @@ Date: YYYY-MM-DD · Spec: 3f9a1c0b7e2d · Status: implemented · Lint: clean
 
 Use one row per rule, with the rule ID alone in the first column, plus rows for the other checks
 that apply (Layout, Copy, Shared components, Schema, Contract, Errors, Paths). The hook reads this
-table: every rule needs a ✅ row, and any ❌ or ⚠️ row blocks `verified`.
+table: every rule needs a ✅ or 👤 row, and any ❌ or ⚠️ row blocks `verified`.

@@ -22,7 +22,7 @@ status: draft
 <!-- Every way the flow can end (done, cancelled, abandoned, failed) and what happens to partial state. -->
 
 ## Rules
-<!-- - FlowName.R1: one checkable statement per bullet. -->
+<!-- - R1: one checkable statement per bullet. -->
 
 ## Open amendments
 

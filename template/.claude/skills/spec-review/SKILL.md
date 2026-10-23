@@ -68,6 +68,12 @@ partial data, very long text or names, zero / one / many items, first-time use.
 
 ## Output
 
+Match the review to the spec's stage. A first draft needs a clear goal and checkable rules, not
+every edge case: keep **Blocking** to what would make it impossible to build or verify, and list
+at most five **Consider** items, the ones most likely to matter. Go deeper (every state, every
+copy key, accessibility labels) when the spec is about to be approved or the user asks for a
+thorough pass.
+
 Group findings as **Blocking** (it can't be built or verified as written), **Should fix**, and
 **Consider**. Number them so the user can reply "apply 1, 3, 4". Each finding is one line
 naming the problem, followed by the proposed text. End with a one-line verdict: ready to

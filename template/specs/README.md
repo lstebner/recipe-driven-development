@@ -1,10 +1,14 @@
 # Specs
 
-This folder holds the recipes. You're the head chef: you write down what each screen,
-component, flow, data model and API should be. Claude is the cook: it plans, implements and
-checks its work against the recipe, and **never changes a recipe silently**. Any change to an
-approved spec is proposed as an amendment that you accept or reject. And nothing is done until
-you've tasted it: a spec only becomes `verified` when you confirm the result is what you meant.
+This folder holds the recipes. You're the head chef: you decide what each screen, component,
+flow, data model and API should be. Claude can draft the recipe from what you've told it, but it
+only becomes binding when you approve it. Claude is the cook: it plans, implements and checks its
+work against the recipe, and **never changes a recipe silently**. Any change to an approved spec
+is proposed as an amendment that you accept or reject. And nothing is done until you've tasted
+it: a spec only becomes `verified` when you confirm the result is what you meant.
+
+The loop: outline → draft → `/spec-review` → you approve → Claude builds (amendments if needed)
+→ `/spec-verify` → you taste → `verified`.
 
 ```
 specs/
@@ -26,12 +30,23 @@ are keyed by name.
 
 ## Starting specs
 
-Writing the recipe is your job, but the boilerplate isn't. Two commands create empty drafts:
+Deciding what goes in the recipe is your job; typing it up doesn't have to be. Either:
 
-- `node scripts/spec-lint.mjs --new screen AlbumDetail`: one draft spec from its template, with
-  the name filled in. Kinds: `screen`, `component`, `flow`, `model`, `api`.
-- `node scripts/spec-lint.mjs --scaffold`: one draft for every entry in `outline.md` that doesn't
-  have a spec yet. Existing specs are never touched, so run it as often as you like.
+- **Ask Claude to draft it** with `/spec-new`:
+  - `/spec-new AlbumDetail: let a listener see an album and buy it`: one spec. Add the kind
+    (`/spec-new model Album`) if the name doesn't make it obvious; list several with commas.
+  - `/spec-new`: every entry in `outline.md` that doesn't have a spec yet.
+
+  Claude adds the entry to the outline, writes a `draft` from what you've said, keeps it short,
+  and lists anything it had to guess so you can confirm or correct it. Then run `/spec-review`.
+- **Or start from an empty draft** with one of two commands:
+
+  - `node scripts/spec-lint.mjs --new screen AlbumDetail`: one draft spec from its template, with
+    the name filled in. Kinds: `screen`, `component`, `flow`, `model`, `api`.
+  - `node scripts/spec-lint.mjs --scaffold`: one draft for every entry in `outline.md` that
+    doesn't have a spec yet. Existing specs are never touched, so run it as often as you like.
+
+Either way, a draft is just a draft. What makes it a rule is your approval.
 
 The outline is for sketching the whole project quickly:
 
@@ -57,8 +72,8 @@ doesn't match the kind of spec it became.
 
 | status | meaning | who sets it |
 |---|---|---|
-| `draft` | being written; anyone can edit freely | you (or Claude, when asked) |
-| `approved` | intent is settled; ready to build | **you only** |
+| `draft` | being written; anyone can edit freely | you, or Claude drafting for you |
+| `approved` | intent is settled; ready to build | **you only**: say "approve AlbumDetail" and confirm the prompt, or edit the status yourself |
 | `implemented` | built; not yet fully verified | Claude |
 | `verified` | every rule passed `/spec-verify`, and you tasted it | Claude proposes it; **you confirm** |
 
@@ -71,10 +86,14 @@ before any edit touches them.
 Claude can't just declare something done. When it sets `status: verified`:
 
 1. The hook checks `_reports/<Name>.md`. The report must be stamped with the spec's current
-   fingerprint (`Spec: <hash>`, from `node scripts/spec-lint.mjs --hash <Name>`), have a ✅ row
-   for every rule, and have no ❌ or ⚠️ rows. If any of that fails, the change is refused.
+   fingerprint (`Spec: <hash>`, from `node scripts/spec-lint.mjs --hash <Name>`), have a ✅ or
+   👤 row for every rule, and have no ❌ or ⚠️ rows. If any of that fails, the change is refused.
 2. If the report passes, you're asked to confirm, right in the session. Claude tells you
    beforehand what to try. Approve if it tastes right; deny and say what's off if it doesn't.
+
+👤 means "only a person can check this": how something looks, how it feels on a real device. It
+doesn't block `verified`; it lands on your list of things to try, and the prompt names it. That
+way Claude never has to choose between leaving a rule unchecked and claiming a ✅ it can't back up.
 
 Lint holds the line afterwards: if a verified spec changes (say you accept an amendment), its
 report no longer matches the fingerprint and lint fails until it's re-verified.
@@ -85,8 +104,6 @@ report no longer matches the fingerprint and lint fails until it's re-verified.
 ---
 screen: AlbumDetail             # must match the filename
 status: approved
-uses: [ArtistBadge, PrimaryButton]   # shared components referenced in Layout/States
-local: [ReleaseTimeline]             # deliberate one-offs referenced as [[~Name]]
 source: [apps/web/src/app/albums/[id]/page.tsx]   # optional until implemented
 ---
 ## Goal
@@ -107,8 +124,8 @@ Let a listener see an album's details and release history, and buy it.
 - not-found: when [[api:GetAlbum#not_found]], show {copy.notFound}
 
 ## Rules
-- AlbumDetail.R1: The buy button is hidden when the listener already owns the album; show {copy.owned} instead.
-- AlbumDetail.R2: The release timeline shows the newest release first.
+- R1: The buy button is hidden when the listener already owns the album; show {copy.owned} instead.
+- R2: The release timeline shows the newest release first.
 
 ## Copy
 | key | text |
@@ -160,7 +177,7 @@ The single call-to-action on a screen.
 ````
 
 Required section: **Purpose**. A component can compose other shared components: give it a
-`uses:` list and a `## Layout` section, the same as a screen.
+`## Layout` section, the same as a screen.
 
 ## Flow spec
 
@@ -189,8 +206,8 @@ Buy on [[screen:AlbumDetail]]; the listener is signed in.
 - cancelled at any step: the cart is kept
 
 ## Rules
-- Checkout.R1: An empty cart never reaches Payment.
-- Checkout.R2: A declined card returns to Payment with the card fields kept and {copy.declined} shown.
+- R1: An empty cart never reaches Payment.
+- R2: A declined card returns to Payment with the card fields kept and {copy.declined} shown.
 
 ## Copy
 | key | text |
@@ -230,8 +247,8 @@ An album listed for sale.
 - artist: many Albums → one [[model:Artist]]; an Artist with albums can't be deleted
 
 ## Rules
-- Album.R1: price is never negative.
-- Album.R2: title is trimmed before it's saved.
+- R1: price is never negative.
+- R2: title is trimmed before it's saved.
 
 ## Used by
 <!-- generated by spec-lint --fix; do not edit -->
@@ -275,7 +292,7 @@ Public. Signed-in callers also get `owned`.
 | not_found | 404 | no album with that id, or it's unlisted |
 
 ## Rules
-- GetAlbum.R1: An unlisted album returns not_found, never 403, so its existence isn't revealed.
+- R1: An unlisted album returns not_found, never 403, so its existence isn't revealed.
 
 ## Used by
 <!-- generated by spec-lint --fix; do not edit -->
@@ -306,19 +323,24 @@ will catch it if that error code is renamed.
 
 ## Layout tree grammar
 
-The Layout section is an indented bullet tree. It's the artistitative structure.
+The Layout section is an indented bullet tree. It's the authoritative structure. Lint reads the
+shared components and one-offs straight from it, so there's no separate list to keep in sync.
+(Older specs may list them in `uses:` / `local:` frontmatter; if those lists are there, they must
+match the tree.)
 
 | syntax | meaning |
 |---|---|
 | `Header:` | a named region (just a label) |
-| `[[Name]]` | a **shared** component; needs `components/Name.md` and must be in `uses` |
-| `[[~Name]]` | a **deliberate one-off**; must be in `local`, must *not* have a shared spec |
+| `[[Name]]` | a **shared** component; needs `components/Name.md` |
+| `[[~Name]]` | a **deliberate one-off**; must *not* have a shared spec |
 | `[[Name variant=quiet]]` | a variant listed in that component's `## Variants` |
 | `{copy.key}` | text from this spec's Copy table |
 | `$color.accent` | a design token from `tokens.md` |
 | `(≥md: row · <md: stack)` | responsive behaviour |
 | `?owned` / `?!owned` | shown only when the condition is true / false; explain it in a rule |
 | `→ R1` / `→ R1, R3` | this node is governed by those rules |
+
+The symbols are optional niceties. Type `>=`, `->` and `,` instead of `≥`, `→` and `·` if that's easier.
 
 ## Shared vs one-off
 
@@ -331,7 +353,9 @@ The Layout section is an indented bullet tree. It's the artistitative structure.
 
 ## Rules
 
-- Every top-level bullet in `## Rules` is one checkable rule with a stable ID: `SpecName.R<n>`.
+- Every top-level bullet in `## Rules` is one checkable rule: `- R1: …`. Its full ID is
+  `SpecName.R1` (e.g. `AlbumDetail.R1`), which is what tests, reports and commits use. Writing
+  the full ID in the spec (`- AlbumDetail.R1: …`) also works.
 - Don't renumber IDs. If a rule is removed, its number retires.
 - Write rules so they can be checked as pass or fail. "Feels fast" can't be checked; "shows a skeleton within 100 ms" can.
 - Tag tests with the rule ID in brackets so verification can find them:
@@ -340,18 +364,23 @@ The Layout section is an indented bullet tree. It's the artistitative structure.
 ## Amendments
 
 When Claude finds something during implementation that would change an approved spec, it adds
-an entry under `## Open amendments` and pauses any work that depends on it:
+an entry under `## Open amendments`, tells you in a sentence, and pauses any work that depends on it:
 
 ```markdown
 ### A1: Buy button needs a disabled state while purchase is pending
 - Finding: double-taps create two orders in testing.
-- Change: Rules + `AlbumDetail.R3: Buy button is disabled and shows a spinner while a purchase is in flight.`
+- Change: Rules + `R3: Buy button is disabled and shows a spinner while a purchase is in flight.`
 - Affects: AlbumDetail.R1, PrimaryButton (needs `loading` state)
 - Shared/one-off impact: none
 ```
 
-- **Accept:** Claude merges the change into the spec, removes the entry, and adds a line to Decisions.
-- **Reject:** the entry is removed and the reason goes into Decisions, so the question doesn't come back.
+Then it applies the amendment straight away: merges the change, removes the entry and adds a
+line to Decisions, all in one edit. That edit triggers a prompt naming the amendment
+("Accept amendment A1 (…)?"), and the prompt is your decision:
+
+- **Accept** by approving it. Nothing else to do.
+- **Deny** to leave the amendment open. Tell Claude to reject it and it removes the entry and
+  records your reason in Decisions, so the question doesn't come back.
 
 ```markdown
 ## Decisions
@@ -366,5 +395,6 @@ an entry under `## Open amendments` and pauses any work that depends on it:
 - `node scripts/spec-lint.mjs --new <kind> <Name>`: create one draft spec from its template.
 - `node scripts/spec-lint.mjs --scaffold`: create a draft for every outline entry without a spec.
 - `node scripts/spec-lint.mjs --hash <Name>`: the spec's fingerprint, which `/spec-verify` stamps into its report.
+- `/spec-new [kind] <Name>[: what it's for]`: add a spec to the outline and draft it; with no arguments, draft everything in the outline that has no spec.
 - `/spec-review <Name>`: Claude critiques a spec before it's built.
 - `/spec-verify <Name>`: Claude checks the implementation rule by rule, writes `_reports/<Name>.md`, and then asks you to taste it.

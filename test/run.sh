@@ -8,7 +8,7 @@ fails=0
 pass() { echo "  ✅ $1"; }
 fail() { echo "  ❌ $1"; echo "$2" | sed 's/^/      /'; fails=$((fails + 1)); }
 lint() { node "$repo/scripts/spec-lint.mjs" --root "$repo" "$@" 2>&1; }
-expect_ok() { local out; out="$(lint)" && pass "$1" || fail "$1" "$out"; }
+expect_ok() { local out; out="$(lint)" && pass "$1" || fail "$1" "$out"; }  # extra args ignored, so mutate can use it
 expect_err() { # expect_err <name> <substring>
   local out; out="$(lint)"
   [[ $? -ne 0 && "$out" == *"$2"* ]] && pass "$1" || fail "$1" "$out"
@@ -28,6 +28,8 @@ out="$("$kit/install.sh" "$repo")" || fail "install" "$out"
 out2="$("$kit/install.sh" "$repo")"
 [[ "$(grep -c spec-lint.mjs "$repo/.claude/settings.json")" == 3 && "$(grep -c rdd:start "$repo/CLAUDE.md")" == 1 ]] \
   && pass "install is idempotent" || fail "install is idempotent" "$out2"
+[[ -f "$repo/.claude/skills/spec-new/SKILL.md" && -f "$repo/.claude/skills/spec-review/SKILL.md" && -f "$repo/.claude/skills/spec-verify/SKILL.md" ]] \
+  && pass "install adds the three skills" || fail "skills installed" "$(ls "$repo/.claude/skills")"
 old="$(mktemp -d)"
 printf '# Mine\n\n<!-- spec-kit:start -->\nold rules\n<!-- spec-kit:end -->\n\nafter\n' > "$old/CLAUDE.md"
 mkdir -p "$old/.claude"
@@ -135,6 +137,9 @@ mutate "one-off with shared spec" expect_err "marked one-off but a shared spec" 
 mutate "rule link to missing rule" expect_err "AlbumDetail.R9, which isn't in Rules" 's/→ R2/→ R9/'
 mutate "rule without ID"         expect_err  "rule has no ID"                      's/^- AlbumDetail.R2: /- /'
 mutate "duplicate rule ID"       expect_err  "duplicate rule ID"                   's/AlbumDetail.R2:/AlbumDetail.R1:/'
+mutate "rule prefixed with another spec" expect_err "belongs to another spec"      's/^- AlbumDetail.R2:/- Other.R2:/'
+mutate "short rule IDs"          expect_ok   ""                                    's/^- AlbumDetail\.R\([12]\):/- R\1:/'
+mutate "uses and local can be left out" expect_ok ""                               '/^uses:/d; /^local:/d'
 mutate "unknown token"           expect_err  'unknown token $radius.xl'            's/\$radius.md/$radius.xl/'
 mutate "raw value in Style"      expect_warn 'raw value "#fff"'                    's/and \$shadow.card/and #fff/'
 mutate "missing required section" expect_err 'missing required section "## Goal"'  's/^## Goal/## Purpose/'
@@ -236,6 +241,17 @@ out="$(hook pre "$(edit_json "$screen" "Buy is hidden when owned." "Buy is alway
 [[ "$out" == *'"permissionDecision":"ask"'* && "$out" == *"Rules"* ]] && pass "pre: editing Rules of approved spec asks" || fail "pre: Rules" "$out"
 out="$(hook pre "$(edit_json "$screen" $'## Open amendments\n' $'## Open amendments\n### A1: thing\n- Finding: x\n')")"
 [[ -z "$out" ]] && pass "pre: adding an amendment doesn't ask" || fail "pre: amendment" "$out"
+cp "$screen" "$screen.bak"
+sed -i 's/^## Open amendments$/## Open amendments\n### A1: Show the year\n- Finding: x\n- Change: Rules + `R3: The year is shown.`/' "$screen"
+out="$(hook pre "$(edit_json "$screen" $'- AlbumDetail.R2: Timeline is newest first.\n' $'- AlbumDetail.R2: Timeline is newest first.\n- AlbumDetail.R3: The year is shown.\n')")"
+[[ "$out" == *'"ask"'* && "$out" != *"Accept amendment"* ]] && pass "pre: a rule change with the amendment still open asks plainly" || fail "pre: amendment open" "$out"
+apply="$(node -e '
+  const fs = require("fs"); const t = fs.readFileSync(process.argv[1], "utf8")
+  const after = t.replace(/### A1:[\s\S]*?(?=\n## )/, "").replace("- AlbumDetail.R2: Timeline is newest first.\n", "- AlbumDetail.R2: Timeline is newest first.\n- AlbumDetail.R3: The year is shown.\n")
+  console.log(JSON.stringify({ tool_name: "Write", tool_input: { file_path: process.argv[1], content: after } }))' "$screen")"
+out="$(hook pre "$apply")"
+[[ "$out" == *'"ask"'* && "$out" == *"Accept amendment A1 (Show the year): Rules + "* && "$out" == *Rules* ]] && pass "pre: applying an amendment asks to accept it by name" || fail "pre: apply amendment" "$out"
+mv "$screen.bak" "$screen"
 out="$(hook pre "$(edit_json "$screen" "status: approved" "status: implemented")")"
 [[ -z "$out" ]] && pass "pre: approved → implemented doesn't ask" || fail "pre: status progress" "$out"
 out="$(hook pre "$(edit_json "$screen" "uses: [ArtistBadge, PrimaryButton]" "uses: [ArtistBadge]")")"
@@ -274,13 +290,17 @@ out="$(to_verified)"
 [[ "$out" == *'"deny"'* && "$out" == *"AlbumDetail.R2 as ❌"* ]] && pass "pre: a ❌ row is refused" || fail "pre: ❌ row" "$out"
 write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| Layout | ⚠️ | not checked |"
 out="$(to_verified)"
-[[ "$out" == *'"deny"'* && "$out" == *"no ✅ row for AlbumDetail.R2"* && "$out" == *"Layout as ⚠️"* ]] && pass "pre: missing rule row and ⚠️ are refused" || fail "pre: missing row" "$out"
+[[ "$out" == *'"deny"'* && "$out" == *"no ✅ or 👤 row for AlbumDetail.R2"* && "$out" == *"Layout as ⚠️"* ]] && pass "pre: missing rule row and ⚠️ are refused" || fail "pre: missing row" "$out"
 write_report "000000000000" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
 out="$(to_verified)"
 [[ "$out" == *'"deny"'* && "$out" == *"older version"* ]] && pass "pre: a stale report is refused" || fail "pre: stale" "$out"
+write_report "$hash" "| R1 | ✅ | test |" "| AlbumDetail.R2 | 👤 | needs a real device |" "| Layout | 👤 | visual |"
+out="$(to_verified)"
+[[ "$out" == *'"ask"'* && "$out" == *"1/2"* && "$out" == *"leaves AlbumDetail.R2, Layout for you to check by hand"* ]] \
+  && pass "pre: 👤 rows pass through to the taste test, named" || fail "pre: 👤" "$out"
 write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
 out="$(to_verified)"
-[[ "$out" == *'"ask"'* && "$out" == *"Taste test"* && "$out" == *"2/2"* ]] && pass "pre: a passing report asks you to taste it" || fail "pre: taste" "$out"
+[[ "$out" == *'"ask"'* && "$out" == *"Taste test"* && "$out" == *"2/2"* && "$out" != *"by hand"* ]] && pass "pre: a passing report asks you to taste it" || fail "pre: taste" "$out"
 sed -i 's/^status: approved/status: verified/' "$screen"
 [[ "$(lint --hash AlbumDetail)" == "$hash" ]] && pass "status change doesn't change the fingerprint" || fail "hash stable" "$(lint --hash AlbumDetail)"
 expect_ok "verified with a passing report lints clean"
@@ -310,7 +330,7 @@ echo "scaffolding"
 [[ -f "$repo/specs/outline.md" ]] && pass "install adds an outline" || fail "outline installed" "$(ls "$repo/specs")"
 new_spec() { node "$repo/scripts/spec-lint.mjs" --root "$repo" --new "$@" 2>&1; }
 out="$(new_spec screen Library)"
-grep -q "^screen: Library$" "$repo/specs/screens/Library.md" && grep -q "^status: draft$" "$repo/specs/screens/Library.md" && grep -q "Library.R1" "$repo/specs/screens/Library.md" \
+grep -q "^screen: Library$" "$repo/specs/screens/Library.md" && grep -q "^status: draft$" "$repo/specs/screens/Library.md" && grep -q "^## Rules$" "$repo/specs/screens/Library.md" \
   && pass "--new creates a named draft from the template" || fail "--new" "$out"
 expect_ok "  ...which lints clean"
 out="$(new_spec screen Library)"; code=$?

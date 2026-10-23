@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install Recipe-Driven Development into a repo. Safe to re-run: existing files are never overwritten
-# (spec-lint.mjs, the two skills and the CLAUDE.md rules block are refreshed only with --update).
+# (spec-lint.mjs, the skills and the CLAUDE.md rules block are refreshed only with --update).
 #   ./install.sh <repo> [--update]
 set -euo pipefail
 
@@ -27,7 +27,7 @@ for f in README.md tokens.md outline.md _templates/{screen,component,flow,model,
 done
 mkdir -p "$target"/specs/{screens,components,flows,models,apis,_reports}
 copy "$tpl/scripts/spec-lint.mjs" "$target/scripts/spec-lint.mjs" yes
-for s in spec-review spec-verify; do
+for s in spec-new spec-review spec-verify; do
   copy "$tpl/.claude/skills/$s/SKILL.md" "$target/.claude/skills/$s/SKILL.md" yes
 done
 
@@ -78,5 +78,5 @@ else
   echo "  append  CLAUDE.md"
 fi
 
-echo "Done. List what you need in specs/outline.md and run: node scripts/spec-lint.mjs --scaffold"
-echo "     Or start one spec with:   node scripts/spec-lint.mjs --new screen <Name>"
+echo "Done. In Claude Code, run /spec-new <Name>: <what it's for>, or list what you need in specs/outline.md and run /spec-new"
+echo "     Without Claude: node scripts/spec-lint.mjs --scaffold, or --new screen <Name>"
