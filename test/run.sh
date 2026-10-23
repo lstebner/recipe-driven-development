@@ -38,6 +38,13 @@ echo '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write|MultiEdit","hooks":[{"type"
 [[ "$(grep -c rdd:start "$old/CLAUDE.md")" == 1 && "$(grep -c spec-kit "$old/CLAUDE.md")" == 0 && "$(grep -c '^after$' "$old/CLAUDE.md")" == 1 ]] \
   && pass "--update replaces an old spec-kit rules block in place" || fail "--update rules block" "$(cat "$old/CLAUDE.md")"
 [[ "$(grep -c spec-lint.mjs "$old/.claude/settings.json")" == 3 ]] && pass "re-install adds the missing hooks" || fail "hook merge" "$(cat "$old/.claude/settings.json")"
+node -e 'const s = require(process.argv[1]); process.exit(s.spinnerVerbs?.mode === "replace" && s.spinnerVerbs.verbs.includes("Checking the pantry") ? 0 : 1)' "$repo/.claude/settings.json" \
+  && pass "install sets kitchen spinner verbs" || fail "spinner verbs" "$(cat "$repo/.claude/settings.json")"
+mine="$(mktemp -d)"; mkdir -p "$mine/.claude"; echo '{"spinnerVerbs":{"mode":"append","verbs":["Mine"]}}' > "$mine/.claude/settings.json"
+"$kit/install.sh" "$mine" >/dev/null
+node -e 'const s = require(process.argv[1]); process.exit(JSON.stringify(s.spinnerVerbs) === JSON.stringify({ mode: "append", verbs: ["Mine"] }) ? 0 : 1)' "$mine/.claude/settings.json" \
+  && pass "install keeps a repo's own spinner verbs" || fail "spinner verbs kept" "$(cat "$mine/.claude/settings.json")"
+rm -rf "$mine"
 rm -rf "$old"
 
 cat > "$repo/specs/tokens.md" <<'EOF'

@@ -31,10 +31,10 @@ for s in spec-new spec-review spec-verify; do
   copy "$tpl/.claude/skills/$s/SKILL.md" "$target/.claude/skills/$s/SKILL.md" yes
 done
 
-# Hooks: merge into .claude/settings.json without touching anything else in it.
-node - "$target/.claude/settings.json" <<'EOF'
+# Hooks and kitchen spinner verbs: merge into .claude/settings.json without touching anything else in it.
+node - "$target/.claude/settings.json" "$tpl/spinner-verbs.json" <<'EOF'
 const fs = require("node:fs")
-const file = process.argv[2]
+const [file, verbs] = process.argv.slice(2)
 const settings = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {}
 settings.hooks ??= {}
 const entry = (matcher, flag) => ({
@@ -53,9 +53,12 @@ for (const [event, matcher, flag] of [
     added = true
   }
 }
+// Spinner verbs are a matter of taste: only set them if the repo hasn't chosen its own.
+const spinner = !settings.spinnerVerbs
+if (spinner) settings.spinnerVerbs = JSON.parse(fs.readFileSync(verbs, "utf8"))
 fs.mkdirSync(require("node:path").dirname(file), { recursive: true })
 fs.writeFileSync(file, JSON.stringify(settings, null, 2) + "\n")
-console.log(`  ${added ? "hooks  " : "keep   "} .claude/settings.json`)
+console.log(`  ${added || spinner ? "merge  " : "keep   "} .claude/settings.json${[added && "hooks", spinner && "spinner verbs"].filter(Boolean).map((s) => ` (${s})`).join("")}`)
 EOF
 
 # CLAUDE.md: append the rules block once. --update replaces it in place, including a block
