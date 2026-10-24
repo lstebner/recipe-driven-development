@@ -65,6 +65,9 @@ line, and you and Claude can each do what you do best.
 7. **Taste.** Claude tells you what to try, then asks you to confirm. Yes: `verified`. No: say
    what's off and it goes back on the stove.
 
+See [`examples/music-store`](examples/music-store) for a small set of specs partway through a
+project: one verified, a few approved (one with an open amendment), and a couple of drafts.
+
 ## Installing
 
 ```
