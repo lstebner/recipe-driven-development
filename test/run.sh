@@ -401,5 +401,10 @@ out="$(hook post "$(edit_json "$repo/src/AlbumDetail.tsx" x y)")"; code=$?
 out="$(hook post "$(edit_json "$repo/README.md" x y)")"; code=$?
 [[ $code -eq 0 ]] && pass "post: unrelated files ignored" || fail "post: unrelated" "$out"
 
+echo "example"
+example="$kit/examples/music-store"
+out="$(node "$kit/template/scripts/spec-lint.mjs" --root "$example" 2>&1)" && pass "examples/music-store lints clean" || fail "example lint" "$out"
+out="$(node --test "$example/src/album.test.mjs" 2>&1)" && pass "examples/music-store tests pass" || fail "example tests" "$out"
+
 echo
 [[ $fails -eq 0 ]] && echo "all passed" || { echo "$fails failed"; exit 1; }
