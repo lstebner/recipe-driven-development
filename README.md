@@ -15,33 +15,38 @@ A workflow for building with AI coding tools, borrowed from the kitchen:
 
 ## Why does this exist?
 
-While working closely with Claude since the beginning of 2026 I've found that my role as a
-developer has shifted. I no longer have to read every single line of code, or worry about having
-to find specific functions or components for debugging, so I really don't need to worry about
-how every little thing is organized as much as I used to. In fact, I don't think I should
-anymore. Claude (in my case) is going to be the one that has to read the code, so the code
-should be written in the way that makes it most efficient.
+Since I started working closely with Claude at the beginning of 2026, my role as a developer has
+shifted. I no longer write every line of code, and as a result I've started to lose track of
+everything my app does. That's mostly fine: the code should be written and organized however
+Claude can best work with it. But I still need to stay in control of the architecture and the
+core functionality.
 
-However, this has led to two core problems that are closely related. The first one being that it
-will make assumptions as it goes that I can't keep up with (especially with auto mode now in
-existence) and the second being that it will sometimes change existing functionality to
-accomplish what I asked if I'm too vague with my request.
+Losing track shows up as two closely related problems:
 
-Recipe-driven development is my solution to both problems. It's sort of an evolution of
-test-driven development for an AI coding world.
+1. **Claude makes assumptions faster than I can keep up with**, especially in auto mode.
+2. **Claude changes existing behaviour to get a task done** when my request is too vague.
 
-The basic idea is that you write specs as markdown and then Claude is instructed to treat these
-as the source of truth for how things are supposed to work. You can spec models, APIs,
-components, layouts, and page flows. These documents start as drafts and you can have Claude
-help you scaffold the initial pass. You then update them to being "approved" at which point
-Claude is no longer free to edit them and will instead ask you if it can make amendments to them
-whenever it thinks it needs to make a change. You then have the ability to approve or tell it to
-stick to how things are spec'd.
+Recipe-driven development is my answer to both. It's sort of an evolution of test-driven
+development for AI coding: you write specs first, Claude builds against them, and the same specs
+are used to check the result afterwards.
 
-So the spec files both guide the development process, and also the verification after things are
-built. They can be used to audit the codebase at any time, and also to help you as the developer
-stay in touch with how everything works _without_ being overly specific which means you and
-Claude can both do what you do best.
+That said, specs are not a replacement for testing your code. You still need tests to make sure
+the code works. Specs are for you as the developer, to make sure everything is working towards
+your vision.
+
+In this framework, a spec (or recipe) is a short markdown file describing how a model, API,
+component, screen or flow should behave. It describes behaviour, not implementation, so Claude
+keeps its freedom over how the code is written. Specs start as drafts, which Claude can help you
+write. Once you approve one, it's the source of truth:
+
+- **Fewer assumptions.** You settle the behaviour up front, and `/spec-review` flags anything
+  vague before it's built, so there's less left for Claude to guess.
+- **No quiet changes.** Claude can't edit an approved spec. If it thinks one needs to change, it
+  proposes an amendment and you accept it or tell it to stick to the recipe.
+
+Because the specs describe how everything is supposed to work, you can audit the codebase
+against them at any time. You stay in touch with how your app behaves without reading every
+line, and you and Claude can each do what you do best.
 
 ## A day in the kitchen
 
