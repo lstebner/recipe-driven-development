@@ -41,8 +41,14 @@ if [[ -f "$target/scripts/spec-lint.mjs" ]]; then
     echo "  this repo has ${installed:-a version before 0.1.0}; run with --update to refresh spec-lint.mjs, specs/README.md, the skills and the CLAUDE.md rules"
   fi
 fi
-# specs/README.md is the format definition, so it's the kit's to keep current; the rest of specs/ is yours.
-copy "$tpl/specs/README.md" "$target/specs/README.md" yes
+# specs/README.md is the format definition, so it's the kit's to keep current; the rest of specs/ is yours. If the
+# copy being replaced differs from the kit's, it's kept as specs/README.md.old, so notes a team added aren't lost.
+readme="$target/specs/README.md"
+if [[ "$update" == --update && -f "$readme" ]] && ! cmp -s "$tpl/specs/README.md" "$readme"; then
+  cp "$readme" "$readme.old"
+  echo "  backup  specs/README.md → specs/README.md.old (copy over any notes of your own)"
+fi
+copy "$tpl/specs/README.md" "$readme" yes
 for f in tokens.md outline.md _templates/{screen,component,flow,model,api,policy}.md; do
   copy "$tpl/specs/$f" "$target/specs/$f"
 done

@@ -57,6 +57,9 @@ grep -q "^my notes$" "$older/specs/README.md" && pass "a plain install keeps spe
 sed -i 's/^const VERSION = .*/const VERSION = "0.0.1"/' "$older/scripts/spec-lint.mjs"
 "$kit/install.sh" "$older" --update >/dev/null 2>&1
 cmp -s "$older/specs/README.md" "$kit/template/specs/README.md" && pass "--update refreshes specs/README.md, the format docs" || fail "--update format docs" "$(tail -2 "$older/specs/README.md")"
+grep -q "^my notes$" "$older/specs/README.md.old" && pass "  ...keeping the old copy as specs/README.md.old" || fail "format docs backup" "$(ls "$older/specs")"
+rm "$older/specs/README.md.old"; "$kit/install.sh" "$older" --update >/dev/null 2>&1
+[[ ! -e "$older/specs/README.md.old" ]] && pass "  ...but only when it differs from the kit's" || fail "needless backup" "$(ls "$older/specs")"
 rm -rf "$older"
 [[ "$(grep -c spec-lint.mjs "$repo/.claude/settings.json")" == 3 && "$(grep -c rdd:start "$repo/CLAUDE.md")" == 1 ]] \
   && pass "install is idempotent" || fail "install is idempotent" "$out2"
@@ -354,6 +357,26 @@ cat >> "$repo/specs/components/DesktopNav.md" <<'EOF'
 | user | again |
 EOF
 out="$(lint)"; [[ "$out" != *'duplicate key "user"'* ]] && pass "only policies have their Inputs keys checked" || fail "inputs on a component" "$out"
+cp "$policy" "$policy.bak"; sed -i 's/^Which navigation links a visitor sees.$/Which links a visitor sees in the navigation./' "$policy"
+[[ "$(lint --hash MobileNav)" == "$navhash" ]] && pass "editing a policy's Purpose leaves dependent fingerprints alone" || fail "policy Purpose in fingerprint" "$(lint --hash MobileNav)"
+mv "$policy.bak" "$policy"
+out="$(hook pre "$(edit_json "$policy" "Which navigation links a visitor sees." "Which links a visitor sees.")")"
+[[ "$out" == *'"ask"'* && "$out" != *"rely on NavLinks"* && "$out" != *"relies on NavLinks"* ]] && pass "pre: a Purpose edit to a policy doesn't send anyone back to re-verify" || fail "pre: policy Purpose" "$out"
+order="$repo/specs/policies/NavOrder.md"
+printf -- '---\npolicy: NavOrder\nstatus: approved\n---\n## Purpose\nThe order navigation links appear in.\n\n## Rules\n- R1: Home always comes first.\n' > "$order"
+sed -i 's/^- NavLinks.R1: Signed-out visitors see Home and Sign in.$/- NavLinks.R1: Signed-out visitors see Home and Sign in, ordered by [[policy:NavOrder]]./' "$policy"
+lint --fix >/dev/null
+chainhash="$(lint --hash MobileNav)"
+sed -i "s/^Spec: .*/Spec: $chainhash/" "$repo/specs/_reports/MobileNav.md"
+expect_ok "a spec that relies on a chain of policies lints clean"
+mutate_in "$order" "changing a policy reached through another makes the spec stale, naming the trail" expect_err "a policy it relies on (NavLinks, NavOrder (through NavLinks))" 's/Home always comes first./Home always comes last./'
+out="$(hook pre "$(edit_json "$order" "Home always comes first." "Home always comes last.")")"
+[[ "$out" == *"DesktopNav, MobileNav, NavLinks rely on NavOrder; MobileNav will need re-verifying."* ]] && pass "pre: changing it names every spec it reaches, through other policies too" || fail "pre: policy chain" "$out"
+mutate_in "$order" "a draft policy reached through another is caught too" expect_err "[[policy:NavOrder]] (through NavLinks) is still a draft" 's/^status: approved$/status: draft/'
+mv "$nav" "$nav.bak"; mv "$repo/specs/components/DesktopNav.md" "$repo/specs/components/DesktopNav.md.bak"
+out="$(hook pre "$(edit_json "$order" "Home always comes first." "Home always comes last.")")"
+[[ "$out" == *" NavLinks relies on NavOrder."* ]] && pass "pre: one spec relies, several rely" || fail "pre: grammar" "$out"
+mv "$nav.bak" "$nav"; mv "$repo/specs/components/DesktopNav.md.bak" "$repo/specs/components/DesktopNav.md"; rm "$order"
 rm "$policy" "$nav" "$repo/specs/components/DesktopNav.md" "$repo/specs/_reports/MobileNav.md"; lint --fix >/dev/null
 
 echo "hooks"

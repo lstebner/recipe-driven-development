@@ -29,17 +29,21 @@ const root = path.resolve(argOf("--root") || process.env.CLAUDE_PROJECT_DIR || p
 const specsDir = path.join(root, "specs")
 
 // One entry per kind of spec: its folder under specs/, required sections, whether it gets a generated "Used by",
-// and whether its content counts toward the fingerprint of specs that reference it. Only policies do: their rules
-// are part of what a referencing spec asks for, while a model or API is a contract with its own report.
+// tables whose first column must be unique (beyond the Fields, Errors and Copy every kind checks), and which of
+// its sections count toward the fingerprint of specs that reference it. Only a policy's do: its decision is part
+// of what a referencing spec asks for, while a model or API is a contract with its own report. Purpose and
+// Examples explain the decision rather than make it, so editing them doesn't send anyone back to re-verify.
 const KINDS = {
   screen: { dir: "screens", required: ["Goal", "Rules"] },
   component: { dir: "components", required: ["Purpose"], usedBy: true },
   flow: { dir: "flows", required: ["Goal", "Steps", "Rules"] },
   model: { dir: "models", required: ["Purpose", "Fields"], usedBy: true },
   api: { dir: "apis", required: ["Purpose", "Rules"], usedBy: true },
-  policy: { dir: "policies", required: ["Purpose", "Rules"], usedBy: true, fingerprinted: true },
+  policy: { dir: "policies", required: ["Purpose", "Rules"], usedBy: true, keyed: ["inputs"], fingerprinted: ["inputs", "output", "rules", "must not"] },
 }
 const STATUSES = ["draft", "approved", "implemented", "verified", "deprecated"]
+// A spec with no status is treated as a draft everywhere: the least that's been agreed.
+const statusOf = (spec) => spec.fm.status ?? "draft"
 // Claude may move a spec between these on evidence; anything else (e.g. → approved) is the user's call.
 // Moving into `verified` additionally needs a passing report and the user's confirmation (see hookPre).
 const CLAUDE_STATUSES = ["approved", "implemented", "verified"]
@@ -305,48 +309,68 @@ const protectedParts = (text, texts = sectionTexts(text)) => {
   return parts
 }
 
-// The specs whose content counts toward this one's fingerprint (see KINDS), as sorted "kind:Name" keys.
-const fingerprintedRefsOf = (spec) =>
-  [...new Set(typedRefsOf(spec).filter((r) => KINDS[r.kind].fingerprinted).map((r) => `${r.kind}:${r.name}`))].sort()
-
-// Referenced specs, read from disk at most once per run: a fingerprint can pull in the same policy many times.
-const referencedSpecs = new Map()
-const referencedSpec = (kind, name) => {
-  const key = `${kind}:${name}`
-  if (!referencedSpecs.has(key)) {
-    const file = path.join(specsDir, KINDS[kind].dir, `${name}.md`)
-    referencedSpecs.set(key, existsSync(file) ? loadSpec(file, kind) : null)
+// The policies a spec relies on, following references all the way down: a screen that references policy A,
+// where A references policy B, relies on both. Each comes with the trail that reaches it (["A", "B"]). They're
+// looked up among the specs already loaded, by exact name, so this always agrees with lint about what exists.
+const reliesOn = (spec, byName) => {
+  const found = new Map()
+  const walk = (from, trail) => {
+    for (const ref of typedRefsOf(from)) {
+      const target = byName.get(ref.name)
+      if (!KINDS[ref.kind].fingerprinted || target?.kind !== ref.kind || target.name === spec.name || found.has(target.name)) continue
+      found.set(target.name, { spec: target, trail: [...trail, target.name] })
+      walk(target, [...trail, target.name])
+    }
   }
-  return referencedSpecs.get(key)
+  walk(spec, [])
+  return [...found.values()].sort((a, b) => a.spec.name.localeCompare(b.spec.name))
 }
+// "CanBuyAlbum", or "AlbumPricing (through CanBuyAlbum)" for one reached through another.
+const trailNote = ({ spec, trail }) => (trail.length > 1 ? `${spec.name} (through ${trail.slice(0, -1).join(" → ")})` : spec.name)
 
 // Fingerprint of what a spec asks for. Status, source and the deprecation fields are lifecycle, not intent, so
 // they're left out: marking a spec verified, or deprecating a policy it uses, doesn't make its report stale, but
-// changing a rule does. The policies it relies on are part of what it asks for, so changing one of their rules
-// makes its report stale too.
-const hashOf = (spec, seen = new Set()) => {
+// changing a rule does. The decision of every policy it relies on (see KINDS) is part of what it asks for too.
+const hashOf = (spec, byName) => {
   const { status, source, deprecated, replaced_by, ...intent } = spec.fm
   const parts = { ...protectedParts(spec.raw), frontmatter: JSON.stringify(intent) }
-  for (const key of fingerprintedRefsOf(spec)) {
-    const [kind, name] = key.split(":")
-    const target = seen.has(key) ? null : referencedSpec(kind, name)
-    if (target) parts[`[[${key}]]`] = hashOf(target, new Set([...seen, key]))
+  for (const { spec: policy } of reliesOn(spec, byName)) {
+    const texts = sectionTexts(policy.raw)
+    parts[`[[${policy.kind}:${policy.name}]]`] = JSON.stringify(KINDS[policy.kind].fingerprinted.map((key) => texts[key]?.text ?? ""))
   }
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 12)
 }
 
+// Who points at each spec that has a Used by: the components a spec lays out (or lists in "uses"), and its typed
+// references. Only live specs count. Lint builds Used by from this, and the hooks use it to say who a change reaches.
+const usersOfAll = (live, byName) => {
+  const users = new Map()
+  const add = (name, spec) => {
+    if (!(users.get(name) ?? []).includes(spec)) users.set(name, [...(users.get(name) ?? []), spec])
+  }
+  for (const spec of live) {
+    const shared = refsOf(spec).filter((r) => !r.local).map((r) => r.name)
+    for (const name of spec.fm.uses === undefined ? shared : asList(spec.fm.uses)) add(name, spec)
+    for (const ref of typedRefsOf(spec)) {
+      const target = byName.get(ref.name)
+      if (target?.kind === ref.kind && target !== spec && KINDS[target.kind].usedBy) add(target.name, spec)
+    }
+  }
+  return users
+}
+
 // A report passes when it's stamped with the spec's current fingerprint, has a ✅ or 👤 row for every rule,
 // and no row anywhere is ❌ or ⚠️. 👤 means "only a human can check this": it's left for the taste test.
-const checkReport = (spec) => {
+const checkReport = (spec, byName) => {
   const file = path.join(specsDir, "_reports", `${spec.name}.md`)
   if (!existsSync(file)) return { file, problems: [`there's no report at ${rel(file)}; run /spec-verify ${spec.name}`], passed: 0, total: 0, taste: [] }
   const lines = normalize(readFileSync(file, "utf8")).split("\n")
   const problems = []
-  const hash = hashOf(spec)
+  const hash = hashOf(spec, byName)
   const stamp = lines.map((l) => /\bSpec:\s*`?([0-9a-f]{12})\b/.exec(l)?.[1]).find(Boolean)
   if (!stamp) problems.push(`${rel(file)} has no "Spec: <hash>" line`)
   else if (stamp !== hash) {
-    const policies = fingerprintedRefsOf(spec).map((key) => key.split(":")[1])
+    const policies = reliesOn(spec, byName).map(trailNote)
     const what = policies.length ? `the spec or a policy it relies on (${policies.join(", ")})` : "the spec"
     problems.push(`${rel(file)} was written for an older version of ${what} (Spec: ${stamp}, now ${hash}); set status: implemented and re-run /spec-verify ${spec.name}`)
   }
@@ -373,10 +397,7 @@ const lint = ({ all, live, tokens, outline }) => {
   }
   const componentNames = new Map(all.filter((s) => s.kind === "component").map((c) => [c.name, c]))
   const tokenNames = new Set(tokens ? Object.values(tokens.sections).flatMap(tableKeys).map((t) => t.key) : [])
-  const usersOf = new Map()
-  const addUser = (name, spec) => {
-    if (!(usersOf.get(name) ?? []).includes(spec)) usersOf.set(name, [...(usersOf.get(name) ?? []), spec])
-  }
+  const usersOf = usersOfAll(live, byName)
   const localOwners = new Map()
   const endpoints = new Map()
 
@@ -469,7 +490,6 @@ const lint = ({ all, live, tokens, outline }) => {
     for (const name of uses) if (!shared.has(name)) report("error", spec, 1, `"uses" lists ${name} but the layout never references [[${name}]]`)
     for (const name of local) if (!declaredLocal.has(name)) report("error", spec, 1, `[[~${name}]] is in the layout but not in "local"`)
     for (const name of declaredLocal) if (!local.has(name)) report("error", spec, 1, `"local" lists ${name} but the layout never references [[~${name}]]`)
-    for (const name of uses) addUser(name, spec)
     for (const name of local) localOwners.set(name, [...(localOwners.get(name) ?? []), spec])
 
     // Typed refs to screens, flows, models, APIs and policies.
@@ -480,13 +500,7 @@ const lint = ({ all, live, tokens, outline }) => {
         report("error", spec, ref.n, `${label} has no spec — create specs/${KINDS[ref.kind].dir}/${ref.name}.md`)
         continue
       }
-      if (target !== spec && KINDS[target.kind].usedBy) addUser(target.name, spec)
       if (isDeprecated(target)) report("warning", spec, ref.n, `${label} points at ${target.name}, which is ${deprecationNote(target, byName)}`)
-      // A draft can change without anyone being asked, which would quietly change what this spec asks for.
-      if (KINDS[target.kind].fingerprinted && (target.fm.status ?? "draft") === "draft" && fm.status !== "draft") {
-        const level = ["implemented", "verified"].includes(fm.status) ? "error" : "warning"
-        report(level, spec, ref.n, `${label} is still a draft, and its rules are part of what ${spec.name} asks for — approve ${target.name} before building on it`)
-      }
       if (!ref.member) continue
       if (!["model", "api"].includes(target.kind)) report("error", spec, ref.n, `${label}: only models (#field) and APIs (#error_code) have members`)
       else if (!membersOf(target).includes(ref.member)) {
@@ -495,8 +509,18 @@ const lint = ({ all, live, tokens, outline }) => {
       }
     }
 
-    // Table keys must be unique: model fields, API error codes, policy inputs, copy keys.
-    for (const section of ["fields", "errors", ...(kind === "policy" ? ["inputs"] : []), "copy"]) {
+    // A draft can change without anyone being asked, which would quietly change what this spec asks for. That
+    // holds for a policy reached through another one too.
+    if (statusOf(spec) !== "draft") {
+      for (const relied of reliesOn(spec, byName).filter((r) => statusOf(r.spec) === "draft")) {
+        const level = ["implemented", "verified"].includes(statusOf(spec)) ? "error" : "warning"
+        const n = typedRefsOf(spec).find((ref) => ref.name === relied.trail[0])?.n ?? 1
+        report(level, spec, n, `[[policy:${relied.spec.name}]]${relied.trail.length > 1 ? ` (through ${relied.trail.slice(0, -1).join(" → ")})` : ""} is still a draft, and its rules are part of what ${spec.name} asks for — approve ${relied.spec.name} before building on it`)
+      }
+    }
+
+    // Table keys must be unique: model fields, API error codes, copy keys, and any a kind adds (policy inputs).
+    for (const section of ["fields", "errors", "copy", ...(KINDS[kind].keyed ?? [])]) {
       const keys = new Set()
       for (const row of tableKeys(spec.sections[section])) {
         if (keys.has(row.key)) report("error", spec, row.n, `duplicate key "${row.key}" in ${spec.sections[section].name}`)
@@ -548,7 +572,7 @@ const lint = ({ all, live, tokens, outline }) => {
     }
 
     // Verified means a passing report for exactly this version of the spec.
-    if (fm.status === "verified") for (const problem of checkReport(spec).problems) report("error", spec, 1, `status is verified but ${problem}`)
+    if (fm.status === "verified") for (const problem of checkReport(spec, byName).problems) report("error", spec, 1, `status is verified but ${problem}`)
   }
 
   // The outline: well-formed, no duplicates, and each entry matches the kind of spec it became.
@@ -759,8 +783,11 @@ const hookPre = () => {
   const oldParts = protectedParts(before, oldTexts)
   const newParts = protectedParts(after, newTexts)
   const changed = [...new Set([...Object.keys(oldParts), ...Object.keys(newParts)])].filter((k) => oldParts[k] !== newParts[k])
-  // The specs that point at this one, from the same map lint builds Used by from (only kinds with a Used by).
-  const relying = () => (KINDS[kind]?.usedBy ? (lint(loadAll()).usersOf.get(name) ?? []) : [])
+  // The specs on disk, loaded the first time a check below needs them, and only once.
+  let loaded
+  const specs = () => (loaded ??= { ...loadAll(), byName: byNameOf(loadAll().all) })
+  // The live specs that point at this one directly, from the same map lint builds Used by from.
+  const pointingAt = () => (KINDS[kind]?.usedBy ? (usersOfAll(specs().live, specs().byName).get(name) ?? []) : [])
 
   // tokens.md has no lifecycle beyond being protected once it leaves draft.
   if (kind !== "tokens") {
@@ -794,7 +821,7 @@ const hookPre = () => {
       const replaced = replacementsOf({ fm: newFm })
       // Specs already deprecated in favour of this one will point at a deprecated spec from now on.
       const pointing = deprecated.filter((s) => replacementsOf(s).includes(name)).map((s) => s.name)
-      const users = relying().map((s) => s.name)
+      const users = pointingAt().map((s) => s.name)
       return decide(
         "ask",
         `Deprecate ${name} (${from} → deprecated)${replaced.length ? `, replaced by ${replaced.join(", ")}` : ", with no replacement"}? ` +
@@ -806,7 +833,7 @@ const hookPre = () => {
     }
     // Marking verified is the taste test: Claude needs a passing report, and then the user has the final say.
     if (to === "verified" && from !== "verified") {
-      const { file: reportFile, problems, passed, total, taste } = checkReport(parseSpec(after, file, kind))
+      const { file: reportFile, problems, passed, total, taste } = checkReport(parseSpec(after, file, kind), specs().byName)
       if (problems.length) return decide("deny", `${name} can't be marked verified yet: ${problems.join("; ")}.`)
       return decide(
         "ask",
@@ -825,12 +852,16 @@ const hookPre = () => {
     const progressOnly = JSON.stringify(rest1) === JSON.stringify(rest2) && (s1 === s2 || (CLAUDE_STATUSES.includes(s1) && CLAUDE_STATUSES.includes(s2) && s2 !== "approved"))
     if (progressOnly) return
   }
-  // A policy is part of every spec that references it, so say which specs a change reaches: verified ones will
-  // need re-verifying.
-  const users = KINDS[kind]?.fingerprinted ? relying() : []
-  const verified = users.filter((s) => s.fm.status === "verified").map((s) => s.name)
+  // A policy's decision is part of every spec that relies on it, directly or through another policy, so say which
+  // specs a change to it reaches: verified ones will need re-verifying. Edits that leave the decision alone
+  // (Purpose, Examples) don't reach anyone.
+  const decision = KINDS[kind]?.fingerprinted ?? []
+  const users = changed.some((k) => decision.includes(k.toLowerCase()))
+    ? specs().live.filter((s) => s.name !== name && reliesOn(s, specs().byName).some((r) => r.spec.name === name))
+    : []
+  const verified = users.filter((s) => statusOf(s) === "verified").map((s) => s.name)
   const reach = users.length
-    ? ` ${users.map((s) => s.name).join(", ")} rely on ${name}${verified.length ? `; ${verified.join(", ")} will need re-verifying` : ""}.`
+    ? ` ${users.map((s) => s.name).join(", ")} ${users.length === 1 ? "relies" : "rely"} on ${name}${verified.length ? `; ${verified.join(", ")} will need re-verifying` : ""}.`
     : ""
   // Applying an amendment removes it from Open amendments; this prompt is where the user accepts it.
   const stillOpen = new Set(openAmendments(after).map((a) => a.id))
@@ -905,7 +936,7 @@ else if (has("--hash")) {
     console.error(`no spec named "${argOf("--hash") ?? ""}"`)
     process.exit(1)
   }
-  console.log(hashOf(spec))
+  console.log(hashOf(spec, byNameOf(loadAll().all)))
 } else {
   let specs = loadAll()
   if (has("--fix")) {

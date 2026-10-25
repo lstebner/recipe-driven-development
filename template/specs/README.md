@@ -101,8 +101,9 @@ way Claude never has to choose between leaving a rule unchecked and claiming a â
 
 Lint holds the line afterwards: if a verified spec changes (say you accept an amendment), its
 report no longer matches the fingerprint and lint fails until it's re-verified. The fingerprint
-also covers every [policy](#policy-spec) the spec references, so changing a policy's rules sends
-every verified spec that relies on it back to be re-verified too.
+also covers the decision of every [policy](#policy-spec) the spec relies on, so changing a
+policy's Inputs, Output, Rules or Must not sends every verified spec that relies on it back to be
+re-verified too. Rewording its Purpose or adding Examples doesn't.
 
 ### Deprecating (`deprecated`)
 
@@ -439,9 +440,13 @@ How the code shares the decision (a function, a hook, a server field) is up to C
 policy pins down is that there's one answer: no spec that uses it works the answer out again on
 its own.
 
-A policy's rules count as part of every spec that references it. When you're asked to approve a
-change to a policy, the prompt names the specs that rely on it. Once accepted, any of them that
-were `verified` fail lint until they're re-verified against the new rules.
+A policy's decision (its Inputs, Output, Rules and Must not) counts as part of every spec that
+relies on it, directly or through another policy: if AlbumDetail references CanBuyAlbum, and
+CanBuyAlbum references a RefundWindow policy, AlbumDetail relies on both. When you're asked to
+approve a change to the decision, the prompt names every spec it reaches. Once accepted, any of
+them that were `verified` fail lint until they're re-verified against the new rules. Purpose and
+Examples explain the decision rather than make it, so editing them reaches no one. A spec that's
+past draft can't rely on a draft policy, since a draft can change without anyone being asked.
 
 ## References between specs
 

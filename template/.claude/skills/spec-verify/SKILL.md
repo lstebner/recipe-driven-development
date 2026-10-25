@@ -59,8 +59,9 @@ Offer to verify its `replaced_by` instead.
      album, one who doesn't, and one whose order was refunded).
 6. Get the fingerprint with `node scripts/spec-lint.mjs --hash <Name>`, then write
    `specs/_reports/<Name>.md` (overwrite it) and show the user the summary table. The fingerprint
-   covers the policies the spec references, so a verified spec whose policy has changed since its
-   report goes stale: re-verify it against the policy as it is now.
+   covers the decision of every policy the spec relies on, through other policies too, so a
+   verified spec whose policy has changed since its report goes stale: re-verify it against the
+   policy as it is now.
 7. **Status.** If the spec was `approved`, you may set `implemented` once it's built. If every
    rule is ✅ or 👤, no row is ❌ or ⚠️ and lint is clean, propose the taste test:
    - Tell the user in 2–5 bullets **what to try** to taste it themselves: every 👤 row first,
