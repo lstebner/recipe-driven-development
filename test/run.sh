@@ -382,7 +382,7 @@ out="$(hook pre "$(node -e '
   console.log(JSON.stringify({ tool_name: "Write", tool_input: { file_path: process.argv[1], content: after } }))' "$api")")"
 [[ "$out" == *'"deny"'* && "$out" == *"edit of its own"*"intro"* ]] && pass "pre: deprecating can't also change the text before the first heading" || fail "pre: deprecate + intro" "$out"
 out="$(hook pre "$(deprecate_json "$api" $'status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: GetAlbumV2')")"
-[[ "$out" == *'"deny"'* && "$out" == *"add a dated line under ## Decisions"* ]] && pass "pre: deprecating without a dated Decisions line is refused" || fail "pre: no decision" "$out"
+[[ "$out" == *'"deny"'* && "$out" == *"add a dated line under ## Decisions"*"use a single Write of the whole file, or a MultiEdit"* ]] && pass "pre: deprecating without a dated Decisions line is refused" || fail "pre: no decision" "$out"
 out="$(deprecate $'status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: GetAlbumV2')"
 [[ "$out" == *'"ask"'* && "$out" == *"Deprecate GetAlbum (approved → deprecated), replaced by GetAlbumV2?"* ]] && pass "pre: deprecating asks, naming the replacement" || fail "pre: deprecate" "$out"
 sed -i 's/^status: approved$/status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: GetAlbumV2\nsource: [src\/gone.ts]/' "$api"

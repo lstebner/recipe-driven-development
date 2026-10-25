@@ -58,6 +58,9 @@ const blank = (s) => s.replace(/[^\n]/g, "")
 const stripNoise = (text) =>
   text.replace(/<!--[\s\S]*?-->/g, blank).replace(/^```[\s\S]*?^```/gm, blank)
 
+// YAML lets any value be quoted (status: "approved"); the quotes aren't part of it.
+const unquote = (s) => s.replace(/^(["'])(.*)\1$/, "$2")
+
 const parseFrontmatter = (text) => {
   const match = /^---\n([\s\S]*?)\n---\n/.exec(text)
   if (!match) return { data: null, lines: 0 }
@@ -66,8 +69,6 @@ const parseFrontmatter = (text) => {
     const line = raw.replace(/\s+#.*$/, "").trim()
     const kv = /^([\w-]+):\s*(.*)$/.exec(line)
     if (!kv) continue
-    // YAML lets any value be quoted (status: "approved"); the quotes aren't part of it.
-    const unquote = (s) => s.replace(/^(["'])(.*)\1$/, "$2")
     const value = kv[2].trim()
     data[kv[1]] = value.startsWith("[")
       ? value.replace(/^\[|\]$/g, "").split(",").map((s) => unquote(s.trim())).filter(Boolean)
@@ -749,7 +750,7 @@ const hookPre = () => {
       ]
       const dated = (texts) => (texts.decisions?.text ?? "").split("\n").filter((l) => /^[-*]\s+\d{4}-\d{2}-\d{2}\b/.test(l))
       const oldDecisions = new Set(dated(oldTexts))
-      if (!dated(newTexts).some((l) => !oldDecisions.has(l))) problems.push(`add a dated line under ## Decisions saying why ("- ${newFm.deprecated || "YYYY-MM-DD"}: Deprecated: …"), in the same edit, since it can't be added once the spec is frozen`)
+      if (!dated(newTexts).some((l) => !oldDecisions.has(l))) problems.push(`add a dated line under ## Decisions saying why ("- ${newFm.deprecated || "YYYY-MM-DD"}: Deprecated: …"), in the same edit, since it can't be added once the spec is frozen. One Edit can't change both the frontmatter and Decisions: use a single Write of the whole file, or a MultiEdit with both changes`)
       if (also.length) problems.push(`deprecate it in an edit of its own; this one also changes ${also.join(", ")}`)
       if (problems.length) return decide("deny", `${name} can't be deprecated like this: ${problems.join("; ")}.`)
       const replaced = replacementsOf({ fm: newFm })
