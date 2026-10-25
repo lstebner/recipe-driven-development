@@ -19,3 +19,6 @@ A small store that sells albums. Each entry below has a spec; the stage it's at 
 ## APIs
 - GetAlbum: GET /albums/{id} — fetch one album for its detail page
 - CreateOrder: POST /orders — buy an album
+
+## Policies
+- CanBuyAlbum: whether a listener can buy an album, already owns it, or can't get it

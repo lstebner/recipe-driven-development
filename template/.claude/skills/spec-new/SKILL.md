@@ -13,9 +13,10 @@ the draft and fill in what they've told you. It's always a `draft`: only the use
 
 - `/spec-new [kind] <Name>[: what it's for]`, e.g. `/spec-new AlbumDetail: let a listener see an
   album and buy it`, or `/spec-new api GetAlbum: GET /albums/{id} — fetch one album`.
-  - `kind` is `screen`, `component`, `flow`, `model` or `api`. If it's left out, infer it from the
-    name and the line (a page or view is a screen, an entity is a model, an endpoint is an api).
-    If you can't tell, ask in one short question.
+  - `kind` is `screen`, `component`, `flow`, `model`, `api` or `policy`. If it's left out, infer it
+    from the name and the line (a page or view is a screen, an entity is a model, an endpoint is an
+    api, and a business decision that several specs share, like who sees what or what something
+    costs, is a policy). If you can't tell, ask in one short question.
   - Several at once is fine: `/spec-new Library, ArtistBadge, model Artist`.
 - `/spec-new` with no arguments: every entry in `specs/outline.md` that doesn't have a spec yet.
 

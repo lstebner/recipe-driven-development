@@ -3,9 +3,9 @@
 A workflow for building with AI coding tools, borrowed from the kitchen:
 
 - **You're the head chef.** You decide what goes on the menu. Each recipe is a spec in
-  constrained markdown that says what a screen, component, flow, data model or API should be,
-  with rules that can be checked. Claude can draft them for you, but nothing is built until you
-  approve the recipe.
+  constrained markdown that says what a screen, component, flow, data model, API or policy should
+  be, with rules that can be checked. Claude can draft them for you, but nothing is built until
+  you approve the recipe.
 - **The AI is the cook.** Claude Code reviews the recipe, builds against it and checks its own
   work against it. It can't change an approved recipe without your sign-off: if it finds a
   problem, it proposes an amendment and you accept or reject it with one click.
@@ -35,9 +35,9 @@ the code works. Specs are for you as the developer, to make sure everything is w
 your vision.
 
 In this framework, a spec (or recipe) is a short markdown file describing how a model, API,
-component, screen or flow should behave. It describes behaviour, not implementation, so Claude
-keeps its freedom over how the code is written. Specs start as drafts, which Claude can help you
-write. Once you approve one, it's the source of truth:
+policy, component, screen or flow should behave. It describes behaviour, not implementation, so
+Claude keeps its freedom over how the code is written. Specs start as drafts, which Claude can
+help you write. Once you approve one, it's the source of truth:
 
 - **Fewer assumptions.** You settle the behaviour up front, and `/spec-review` flags anything
   vague before it's built, so there's less left for Claude to guess.
@@ -77,7 +77,7 @@ deprecated.
 
 ```
 ./install.sh <repo>            # adds specs/, scripts/spec-lint.mjs, three skills, hooks, CLAUDE.md rules
-./install.sh <repo> --update   # also refreshes spec-lint.mjs, the skills and the CLAUDE.md rules
+./install.sh <repo> --update   # also refreshes spec-lint.mjs, specs/README.md, the skills and the CLAUDE.md rules
 ./test/run.sh                  # end-to-end check in a throwaway repo
 ```
 
@@ -88,9 +88,9 @@ changed in each one, and flags anything that could make your existing specs fail
 You may need to **keep permission prompts on.** Your sign-off is a Claude Code permission prompt.
 Under modes that skip prompts, the "ask" may never reach you, and the locks quietly stop working.
 
-The spec kinds (screen, component, flow, model, API) are shaped for apps with a UI and a
-backend. CLIs, libraries and background jobs fit less well; a model or API spec usually comes
-closest. If you're interested in using this repo for those things, feel free to file issues or
+The spec kinds (screen, component, flow, model, API, policy) are shaped for apps with a UI and a
+backend. CLIs, libraries and background jobs fit less well; a model, API or policy spec usually
+comes closest. If you're interested in using this repo for those things, feel free to file issues or
 make a fork and improve it.
 
 What gets installed into the repo:
@@ -98,8 +98,8 @@ What gets installed into the repo:
 | path | what it is |
 |---|---|
 | `specs/README.md` | the spec format: lifecycle, tasting, deprecating, each kind of spec, references, layout grammar, rules, amendments |
-| `specs/outline.md` | a quick list of every screen, component, flow, model and API you know you'll need; `--scaffold` turns it into draft specs |
-| `specs/_templates/` | `screen.md`, `component.md`, `flow.md`, `model.md`, `api.md` |
+| `specs/outline.md` | a quick list of every screen, component, flow, model, API and policy you know you'll need; `--scaffold` turns it into draft specs |
+| `specs/_templates/` | `screen.md`, `component.md`, `flow.md`, `model.md`, `api.md`, `policy.md` |
 | `specs/tokens.md` | design tokens, referenced as `$name` |
 | `scripts/spec-lint.mjs` | lint (`--fix` regenerates Used by, `--summary` prints a dashboard, `--hash` fingerprints a spec), scaffolding (`--new <kind> <Name>`, `--scaffold` from the outline); also the hook entry point. Node ≥ 18, no dependencies |
 | `.claude/settings.json` | **PreToolUse** hooks ask you before protected content in a non-draft spec changes (naming the amendment when Claude applies one), before a shell command that looks like it writes to `specs/`, before anything is marked `verified` (which is refused outright without a passing report), and before a spec is deprecated (any later edit to a deprecated spec is refused). A **PostToolUse** hook sends lint errors back to Claude, and reminds it when it edits the source of a deprecated spec. Also kitchen-themed `spinnerVerbs` ("Checking the pantry", "Mincing", "Deglazing"…), unless the repo already sets its own |

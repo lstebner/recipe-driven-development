@@ -1,13 +1,14 @@
 <!-- rdd:start -->
 ## Specs (`specs/`): Recipe-Driven Development
 
-`specs/` is the source of truth for every screen, component, flow, data model and API that has a
-spec. The user is the head chef and decides the recipe (the spec); Claude is the cook and follows
-it; the user tastes the result before it's called done. The format is defined in `specs/README.md`;
-read it before writing or changing a spec.
+`specs/` is the source of truth for every screen, component, flow, data model, API and policy
+that has a spec. The user is the head chef and decides the recipe (the spec); Claude is the cook
+and follows it; the user tastes the result before it's called done. The format is defined in
+`specs/README.md`; read it before writing or changing a spec.
 
 - **Before any work a spec covers**, read that spec, every spec it references (`[[Name]]`,
-  `[[screen:…]]`, `[[flow:…]]`, `[[model:…]]`, `[[api:…]]`), and `specs/tokens.md` for UI.
+  `[[screen:…]]`, `[[flow:…]]`, `[[model:…]]`, `[[api:…]]`, `[[policy:…]]`), and
+  `specs/tokens.md` for UI.
   Cite full rule IDs (e.g. `AlbumDetail.R1`) in plans, commits and test names.
 - **Drafting:** when asked to draft specs (`/spec-new`, from `specs/outline.md`, or from a
   conversation), add each to the outline and write it as `draft`, starting the files with
@@ -47,7 +48,9 @@ read it before writing or changing a spec.
   component (adding a variant if only props or appearance differ) rather than forking it. A new
   one-off must appear as `[[~Name]]` in the spec, which for an approved spec means an amendment.
   Never quietly copy a shared component into a screen. Likewise, reuse an existing
-  `specs/models/` entity rather than redefining its fields inline.
+  `specs/models/` entity rather than redefining its fields inline, and get a decision from its
+  `specs/policies/` spec rather than working it out again where it's used. When a decision that
+  more than one spec needs isn't in a policy yet, suggest one rather than restating it in each.
 - **Tests** that check a rule include its full ID in brackets: `it("[AlbumDetail.R1] ...")`.
 - **Verification** checks the spec as written. Never weaken a test or reinterpret a rule to make
   it pass; a mismatch is either a bug or an amendment. Mark a rule 👤 only when a person genuinely

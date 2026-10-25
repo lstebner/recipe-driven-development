@@ -1,11 +1,11 @@
 # Specs
 
 This folder holds the recipes. You're the head chef: you decide what each screen, component,
-flow, data model and API should be. Claude can draft the recipe from what you've told it, but it
-only becomes binding when you approve it. Claude is the cook: it plans, implements and checks its
-work against the recipe, and **never changes a recipe silently**. Any change to an approved spec
-is proposed as an amendment that you accept or reject. And nothing is done until you've tasted
-it: a spec only becomes `verified` when you confirm the result is what you meant.
+flow, data model, API and policy should be. Claude can draft the recipe from what you've told
+it, but it only becomes binding when you approve it. Claude is the cook: it plans, implements and
+checks its work against the recipe, and **never changes a recipe silently**. Any change to an
+approved spec is proposed as an amendment that you accept or reject. And nothing is done until
+you've tasted it: a spec only becomes `verified` when you confirm the result is what you meant.
 
 The loop: outline → draft → `/spec-review` → you approve → Claude builds (amendments if needed)
 → `/spec-verify` → you taste → `verified`.
@@ -20,6 +20,7 @@ specs/
   flows/           multi-step journeys             e.g. flows/Checkout.md
   models/          data entities                   e.g. models/Album.md
   apis/            one file per endpoint           e.g. apis/GetAlbum.md
+  policies/        business decisions, shared      e.g. policies/CanBuyAlbum.md
   _templates/      copy these to start a new spec
   _reports/        verification reports written by /spec-verify
 ```
@@ -42,7 +43,7 @@ Deciding what goes in the recipe is your job; typing it up doesn't have to be. E
 - **Or start from an empty draft** with one of two commands:
 
   - `node scripts/spec-lint.mjs --new screen AlbumDetail`: one draft spec from its template, with
-    the name filled in. Kinds: `screen`, `component`, `flow`, `model`, `api`.
+    the name filled in. Kinds: `screen`, `component`, `flow`, `model`, `api`, `policy`.
   - `node scripts/spec-lint.mjs --scaffold`: one draft for every entry in `outline.md` that
     doesn't have a spec yet. Existing specs are never touched, so run it as often as you like.
 
@@ -61,6 +62,8 @@ The outline is for sketching the whole project quickly:
 - Artist
 ## APIs
 - GetAlbum: GET /albums/{id} — fetch one album
+## Policies
+- CanBuyAlbum: whether a listener can buy an album, already owns it, or can't get it
 ```
 
 The text after the colon is yours, so it goes into the draft's Goal or Purpose (and for an API, a
@@ -97,7 +100,10 @@ doesn't block `verified`; it lands on your list of things to try, and the prompt
 way Claude never has to choose between leaving a rule unchecked and claiming a ✅ it can't back up.
 
 Lint holds the line afterwards: if a verified spec changes (say you accept an amendment), its
-report no longer matches the fingerprint and lint fails until it's re-verified.
+report no longer matches the fingerprint and lint fails until it's re-verified. The fingerprint
+also covers the decision of every [policy](#policy-spec) the spec relies on, so changing a
+policy's Inputs, Output, Rules or Must not sends every verified spec that relies on it back to be
+re-verified too. Rewording its Purpose or adding Examples doesn't.
 
 ### Deprecating (`deprecated`)
 
@@ -354,10 +360,98 @@ Public. Signed-in callers also get `owned`.
 Required sections: **Purpose**, **Rules**, plus `endpoint` in the frontmatter. No two API specs
 may claim the same endpoint.
 
+## Policy spec
+
+A business decision that more than one spec depends on: whether a listener can buy an album, what
+an order costs, who may cancel it. It isn't a data entity (no fields), an endpoint, or something
+on screen. It's the logic between them, written down once so every spec that needs the answer
+gets the same one.
+
+Reach for a policy when several specs must agree on a decision but can't share a component.
+Whether a listener can buy an album decides what AlbumDetail shows (Buy, or "In your library"),
+what GetAlbum reports as `owned`, and when CreateOrder refuses a second purchase. Written into each
+spec, the conditions drift apart; in a policy there's one place to change them, and **Used by**
+lists everything a change affects. The same goes for components that show the same thing in
+different ways, like a mobile and a desktop menu that must always list the same links.
+
+````markdown
+---
+policy: CanBuyAlbum
+status: approved
+source: [apps/api/src/policies/canBuyAlbum.ts]
+---
+## Purpose
+Whether a listener can buy an album, already owns it, or can't get it at all.
+
+## Inputs
+| input | type | notes |
+|---|---|---|
+| album | [[model:Album]] | |
+| listener | signed-in listener | absent when signed out |
+
+## Output
+One of `buy`, `owned` or `unavailable`.
+
+## Rules
+- R1: `unavailable` when the album isn't listed, whoever is asking.
+- R2: Otherwise `owned` when the listener has a completed order for the album. A refunded order doesn't count.
+- R3: Otherwise `buy`, including for signed-out visitors: they sign in when they press Buy.
+
+## Examples
+| case | inputs | output |
+|---|---|---|
+| signed out | listed album, no listener | buy |
+| refunded | listed album, only a refunded order | buy |
+| delisted after buying | unlisted album, a completed order | unavailable |
+
+## Must not
+- Never trust what the client says about ownership: it comes from the listener's orders.
+
+## Used by
+<!-- generated by spec-lint --fix; do not edit -->
+- AlbumDetail (screen)
+- CreateOrder (api)
+- GetAlbum (api)
+
+## Open amendments
+
+## Decisions
+````
+
+Required sections: **Purpose**, **Rules**. Inputs and Output say what the decision takes and
+gives back, not how it's computed. Examples are optional: they're the cases worth pinning down,
+and each one makes a good test.
+
+The specs that depend on it reference it and say how they use the answer, without restating it.
+In AlbumDetail:
+
+```markdown
+## Layout
+- ?buy [[PrimaryButton]] {copy.buy}   → R1
+- ?owned {copy.owned}                 → R1
+
+## Rules
+- R1: The buy button shows only when [[policy:CanBuyAlbum]] gives `buy`, and {copy.owned} only when it gives `owned`.
+```
+
+And in CreateOrder's Errors table, `| already_owned | 409 | [[policy:CanBuyAlbum]] gives owned |`.
+
+How the code shares the decision (a function, a hook, a server field) is up to Claude. What the
+policy pins down is that there's one answer: no spec that uses it works the answer out again on
+its own.
+
+A policy's decision (its Inputs, Output, Rules and Must not) counts as part of every spec that
+relies on it, directly or through another policy: if AlbumDetail references CanBuyAlbum, and
+CanBuyAlbum references a RefundWindow policy, AlbumDetail relies on both. When you're asked to
+approve a change to the decision, the prompt names every spec it reaches. Once accepted, any of
+them that were `verified` fail lint until they're re-verified against the new rules. Purpose and
+Examples explain the decision rather than make it, so editing them reaches no one. A spec that's
+past draft can't rely on a draft policy, since a draft can change without anyone being asked.
+
 ## References between specs
 
-Any protected section can point at another spec. Lint checks that the target exists, and models
-and APIs get a generated **Used by** listing everyone who points at them.
+Any protected section can point at another spec. Lint checks that the target exists, and models,
+APIs and policies get a generated **Used by** listing everyone who points at them.
 
 | syntax | meaning |
 |---|---|
@@ -365,6 +459,7 @@ and APIs get a generated **Used by** listing everyone who points at them.
 | `[[flow:Checkout]]` | a flow spec |
 | `[[model:Album]]` / `[[model:Album#price]]` | a model, or one of its fields |
 | `[[api:GetAlbum]]` / `[[api:GetAlbum#not_found]]` | an API, or one of its error codes |
+| `[[policy:CanBuyAlbum]]` | a policy spec |
 
 So a screen can say `- not-found: when [[api:GetAlbum#not_found]], show {copy.notFound}`, and lint
 will catch it if that error code is renamed.
@@ -396,6 +491,9 @@ The symbols are optional niceties. Type `>=`, `->` and `,` instead of `≥`, `�
 - **Variant or new component?** If only props or appearance differ, it's a variant of the
   existing component. If the structure differs, it's a new component, and its Purpose must
   say why it isn't a variant.
+- **Same decision, different rendering?** If two components show the same thing in structurally
+  different ways, they're separate components, and the decision they share is a
+  [policy](#policy-spec) that both reference.
 - Mark one-offs with `~` on purpose. spec-lint warns when the same one-off appears in two specs.
 - `Used by` is generated. Run `node scripts/spec-lint.mjs --fix`; never edit it by hand.
 
