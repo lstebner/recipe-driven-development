@@ -31,10 +31,11 @@ read it before writing or changing a spec.
   user in 2–5 bullets what to try, including every 👤 row.
 - **Deprecated specs** (`status: deprecated`) are frozen records of something that's off the menu.
   Never edit one, never build new work against it, and don't extend code that only exists for it.
-  Use its `replaced_by` spec instead; if it has none, the behaviour is meant to go away, so ask
-  before relying on it. Code and tests may still reference it: when you're working in that code,
-  move it to the replacement (or point it out) rather than following the old spec. A live spec
-  that still points at it needs an amendment.
+  Use its `replaced_by` spec instead, following the chain if that one was deprecated too (lint
+  messages name the live end); if nothing live replaces it, the behaviour is meant to go away, so
+  ask before relying on it. Code and tests may still reference it: when you're working in that
+  code, move it to the replacement (or point it out) rather than following the old spec. A live
+  spec that still points at it needs an amendment.
 - **Deprecating** is the user's decision, like approving. When they ask, set `status: deprecated`,
   `deprecated: <today's date, YYYY-MM-DD>` and `replaced_by: <Name>` (a live spec of the same kind)
   if something replaces it, and add a dated line under `## Decisions` saying why, all in one edit

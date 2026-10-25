@@ -125,19 +125,22 @@ until it does. A draft was never agreed on, so there's nothing to keep: delete i
 From then on the spec is **frozen**:
 
 - **Never edited.** The hook refuses every edit Claude tries, Decisions included. If you change
-  your mind, bring it back yourself: set the status back and delete the `deprecated` and
-  `replaced_by` lines (lint rejects them on a live spec). It's then checked in full again, so fix
-  anything that went stale while it was frozen, such as a `source` file that has since moved.
-  Or write a new spec.
+  your mind, bring it back yourself: set the status back, delete the `deprecated` and
+  `replaced_by` lines (lint rejects them on a live spec), and put it back in `outline.md`. It's
+  then checked in full again, so fix anything that went stale while it was frozen, such as a
+  `source` file that has since moved. Or write a new spec.
 - **Never built against.** Claude follows `replaced_by` instead, and doesn't extend code that only
-  exists for the deprecated spec. When Claude edits a file listed in its `source`, a hook reminds
-  it that the spec is deprecated.
+  exists for the deprecated spec. If the replacement has been deprecated in turn, the chain is
+  followed to its end: when BuyButton was replaced by PrimaryButton, and PrimaryButton later by
+  ActionButton, everything that still uses BuyButton is told to use ActionButton. When Claude
+  edits a file listed in its `source`, a hook reminds it that the spec is deprecated.
 - **Still visible.** Lint warns wherever a live spec still points at it (fix those with an
   amendment), and `--summary` lists every deprecated spec with any tests still tagged with its
   rules: that's code that hasn't caught up yet.
 - **Out of the way.** Lint checks only its deprecation fields, so missing source files or renamed
-  references can't break it. If its replacement is later deprecated or deleted, lint warns rather
-  than fails, since the frozen spec can't be fixed. It drops out of everyone's Used by, and a
+  references can't break it. Its replacement being deprecated in turn is fine; if the chain breaks
+  (a replacement is deleted, or the chain loops back on itself), lint warns rather than fails,
+  since the frozen spec can't be fixed. It drops out of everyone's Used by, and a
   replacement can claim the same endpoint. Its name and rule IDs stay taken, so old commits and
   test names still point at exactly one thing.
 

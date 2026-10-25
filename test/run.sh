@@ -381,12 +381,25 @@ cp "$v2" "$v2.bak"; sed -i 's/^status: draft$/status: approved/' "$v2"
 out="$(hook pre "$(edit_json "$v2" "status: approved" $'status: deprecated\ndeprecated: 2026-10-25')")"
 [[ "$out" == *'"ask"'* && "$out" == *"Deprecated specs that name GetAlbumV2 as their replacement will keep pointing at it: GetAlbum."* ]] \
   && pass "pre: deprecating a replacement names the specs that point at it" || fail "pre: deprecate a replacement" "$out"
-sed -i 's/^status: approved$/status: deprecated\ndeprecated: 2026-10-25/' "$v2"
+echo "export const x = 1" > "$repo/src/gone.ts"
+v3="$repo/specs/apis/GetAlbumV3.md"
+sed 's/GetAlbumV2/GetAlbumV3/g' "$v2" > "$v3"
+sed -i 's/^status: approved$/status: deprecated\ndeprecated: 2026-10-25\nreplaced_by: GetAlbumV3/' "$v2"
 out="$(lint --fix)"; code=$?
-[[ $code -eq 0 && "$out" == *"deprecated, but replaced_by names GetAlbumV2, which is itself deprecated on 2026-10-25"* ]] \
-  && pass "a frozen spec whose replacement is later deprecated only warns" || fail "replacement deprecated later" "$out"
+[[ $code -eq 0 && "$out" == *"[[api:GetAlbum]] points at GetAlbum, which is deprecated on 2026-10-24; use GetAlbumV3 instead"* && "$out" != *"use GetAlbumV2"* && "$out" != *"chain"* ]] \
+  && pass "a chain of replacements is followed to its live end, without a warning" || fail "replacement chain" "$out"
+out="$(hook post "$(edit_json "$repo/src/gone.ts" x y)")"
+[[ "$out" == *"source of GetAlbum, which is deprecated on 2026-10-24; use GetAlbumV3 instead"* ]] && pass "  ...in the source reminder too" || fail "chain in post hook" "$out"
+rm "$v3"; sed -i '/^replaced_by: GetAlbumV3$/d' "$v2"
+out="$(lint --fix)"; code=$?
+[[ $code -eq 0 && "$out" == *"GetAlbum, which is deprecated on 2026-10-24; nothing live replaces it"* && "$out" != *"chain"* ]] \
+  && pass "a chain that ends with no replacement says nothing live replaces it" || fail "chain to nothing" "$out"
+sed -i 's/^deprecated: 2026-10-25$/deprecated: 2026-10-25\nreplaced_by: GetAlbum/' "$v2"
+out="$(lint --fix)"; code=$?
+[[ $code -eq 0 && "$out" == *"chain of replacements is broken: GetAlbum → GetAlbumV2 → GetAlbum goes round in a loop"* ]] \
+  && pass "a loop in the chain only warns" || fail "chain loop" "$out"
 rm "$v2"; out="$(lint --fix)"; code=$?
-[[ $code -eq 0 && "$out" == *"replaced_by names GetAlbumV2, which has no spec"* ]] && pass "  ...and so does one whose replacement is deleted" || fail "replacement deleted later" "$out"
+[[ $code -eq 0 && "$out" == *"chain of replacements is broken: GetAlbumV2 has no spec"* ]] && pass "  ...and so does a replacement that's been deleted" || fail "replacement deleted later" "$out"
 mv "$v2.bak" "$v2"; lint --fix >/dev/null
 badge="$repo/specs/components/ArtistBadge.md"
 cp "$badge" "$badge.bak"; cp "$screen" "$screen.bak"
