@@ -133,10 +133,12 @@ draft was never agreed on, so there's nothing to keep: delete it instead.
 From then on the spec is **frozen**:
 
 - **Never edited.** The hook refuses every edit Claude tries, Decisions included. If you change
-  your mind, bring it back yourself: set the status back, delete the `deprecated` and
-  `replaced_by` lines (lint rejects them on a live spec), and put it back in `outline.md`. It's
-  then checked in full again, so fix anything that went stale while it was frozen, such as a
-  `source` file that has since moved. Or write a new spec.
+  your mind, set its status back yourself (to `approved`, say). Claude notices on your next
+  message (see [Noticing your changes](#noticing-your-changes)) and finishes the job: it removes
+  the `deprecated` and `replaced_by` lines, adds a dated line under Decisions and puts the spec
+  back in `outline.md`. From then on it's checked in full again, so anything that went stale while
+  it was frozen, such as a `source` file that has since moved, shows up in lint. Or write a new
+  spec.
 - **Never built against.** Claude follows `replaced_by` instead, and doesn't extend code that only
   exists for the deprecated spec. If the replacement has been deprecated in turn, the chain is
   followed to its end: when BuyButton was replaced by PrimaryButton, and PrimaryButton later by
@@ -151,6 +153,28 @@ From then on the spec is **frozen**:
   since the frozen spec can't be fixed. It drops out of everyone's Used by, and a
   replacement can claim the same endpoint. Its name and rule IDs stay taken, so old commits and
   test names still point at exactly one thing.
+
+### Noticing your changes
+
+You don't have to tell Claude when you change a spec yourself. `specs/.last-seen.json` records
+what Claude last saw of each spec (its status and fingerprint). It's ignored by git, so it's
+per checkout. At the start of a session and on each message you send, a hook compares the specs
+with it and tells Claude what changed somewhere else: your own edits, or a teammate's after a
+`git pull`. Claude's own edits are recorded as it makes them, so it isn't told about those.
+
+| what changed | what Claude does |
+|---|---|
+| draft → `approved` | offers to build it |
+| the content of an `implemented` or `verified` spec, or a policy it relies on | checks the code still matches and offers to re-verify (a `verified` one goes back to `implemented`, since its report no longer matches) |
+| the content of an `approved` spec | re-reads it before building on it |
+| `deprecated` → anything else | finishes bringing it back (above), then offers to build it |
+| anything → `deprecated` | takes it off the outline and stops building on it |
+| anything → `verified`, by hand | leaves it to lint to check the report, and says so if it fails |
+| back to `draft` | stops building on it until it's approved again |
+
+Claude only offers. It doesn't start building or verifying because a status moved. The first
+run just records what's there. If you run two sessions at once, whichever sees a change first is
+the one that's told.
 
 ## Screen spec
 

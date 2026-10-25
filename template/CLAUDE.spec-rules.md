@@ -55,6 +55,10 @@ and follows it; the user tastes the result before it's called done. The format i
 - **Verification** checks the spec as written. Never weaken a test or reinterpret a rule to make
   it pass; a mismatch is either a bug or an amendment. Mark a rule 👤 only when a person genuinely
   has to judge it, never to get past a check you could have run.
+- **Changes made outside this session** (the user editing a spec, or a git pull) are listed by a
+  hook at the start of a session and with the user's messages: approvals, hand edits, revivals,
+  deprecations. Tell the user briefly what you noticed and offer the next step it calls for, per
+  `specs/README.md` ("Noticing your changes"). Don't start building or verifying unasked.
 - spec-lint runs automatically after edits. Run `node scripts/spec-lint.mjs --fix` to regenerate
   `Used by`, and `--summary` for an overview.
 <!-- rdd:end -->

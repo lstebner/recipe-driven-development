@@ -65,7 +65,7 @@ const [file, verbs] = process.argv.slice(2)
 const settings = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {}
 settings.hooks ??= {}
 const entry = (matcher, flag) => ({
-  matcher,
+  ...(matcher ? { matcher } : {}),
   hooks: [{ type: "command", command: `node "$CLAUDE_PROJECT_DIR/scripts/spec-lint.mjs" ${flag}` }],
 })
 let added = false
@@ -73,6 +73,8 @@ for (const [event, matcher, flag] of [
   ["PreToolUse", "Edit|Write|MultiEdit", "--hook-pre"],
   ["PreToolUse", "Bash", "--hook-bash"],
   ["PostToolUse", "Edit|Write|MultiEdit", "--hook-post"],
+  ["SessionStart", null, "--hook-seen"],
+  ["UserPromptSubmit", null, "--hook-seen"],
 ]) {
   settings.hooks[event] ??= []
   if (!JSON.stringify(settings.hooks[event]).includes(`spec-lint.mjs\\" ${flag}`)) {
@@ -87,6 +89,14 @@ fs.mkdirSync(require("node:path").dirname(file), { recursive: true })
 fs.writeFileSync(file, JSON.stringify(settings, null, 2) + "\n")
 console.log(`  ${added || spinner ? "merge  " : "keep   "} .claude/settings.json${[added && "hooks", spinner && "spinner verbs"].filter(Boolean).map((s) => ` (${s})`).join("")}`)
 EOF
+
+# .gitignore: what Claude last saw of each spec is per checkout, so a teammate's changes show up after a pull.
+if ! grep -qsxF "specs/.last-seen.json" "$target/.gitignore"; then
+  { [[ -s "$target/.gitignore" && -n "$(tail -c1 "$target/.gitignore")" ]] && echo; echo "specs/.last-seen.json"; } >> "$target/.gitignore"
+  echo "  append  .gitignore (specs/.last-seen.json)"
+else
+  echo "  keep    .gitignore"
+fi
 
 # CLAUDE.md: append the rules block once. --update replaces it in place, including a block
 # written before the rename (marked spec-kit:start / spec-kit:end).

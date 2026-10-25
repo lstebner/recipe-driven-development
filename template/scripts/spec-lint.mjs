@@ -12,6 +12,8 @@
 //   --hook-bash    Claude Code PreToolUse hook (Bash): ask the user before a shell command that looks like it writes to specs/
 //   --hook-post    Claude Code PostToolUse hook: report lint errors back to Claude after a relevant edit, and
 //                  remind it when the file it edited is the source of a deprecated spec
+//   --hook-seen    Claude Code SessionStart / UserPromptSubmit hook: tell Claude which specs changed since it last
+//                  looked (an approval, a hand edit, a git pull), and what that means it should offer to do next
 //   --version      print the kit version
 //   --root <dir>   repo root (default: $CLAUDE_PROJECT_DIR, else the parent of this script's directory)
 import { createHash } from "node:crypto"
@@ -416,7 +418,7 @@ const lint = ({ all, live, tokens, outline }) => {
       for (const problem of resolveReplacements(spec, byName).broken) report("warning", spec, 1, `deprecated, but its chain of replacements is broken: ${problem}`)
       continue
     }
-    for (const key of DEPRECATION_KEYS) if (fm[key] !== undefined) report("error", spec, 1, `"${key}" belongs only on a deprecated spec (status is ${fm.status ?? "missing"})`)
+    for (const key of DEPRECATION_KEYS) if (fm[key] !== undefined) report("error", spec, 1, `"${key}" belongs only on a deprecated spec (status is ${fm.status ?? "missing"}); if it's been brought back, remove it`)
     for (const section of KINDS[kind].required) {
       const found = spec.sections[section.toLowerCase()]
       if (!found) report(incomplete, spec, 1, `missing required section "## ${section}"`)
@@ -846,9 +848,12 @@ const hookPre = () => {
   if (from === "draft" && to === "draft") return
   if (changed.length === 0) return
   // Claude may record implementation progress (status approved ↔ implemented, verified → implemented, source paths) without asking.
+  // It may also clear the deprecation fields a revived spec still carries: bringing it back was the user's call (they
+  // set its status), and the fields aren't part of what it asks for.
   if (changed.length === 1 && changed[0] === "frontmatter") {
     const { status: s1, source: src1, ...rest1 } = oldFm
     const { status: s2, source: src2, ...rest2 } = newFm
+    for (const key of DEPRECATION_KEYS) if (s1 !== "deprecated" && rest2[key] === undefined) delete rest1[key]
     const progressOnly = JSON.stringify(rest1) === JSON.stringify(rest2) && (s1 === s2 || (CLAUDE_STATUSES.includes(s1) && CLAUDE_STATUSES.includes(s2) && s2 !== "approved"))
     if (progressOnly) return
   }
@@ -896,11 +901,101 @@ const hookBash = () => {
   )
 }
 
+// ---------- noticing changes ----------
+
+// What Claude last saw of each spec: its status and fingerprint. It's local to this checkout and ignored by git,
+// so a teammate's approval shows up here after a pull. Claude's own edits update it as they happen (see hookPost),
+// so what's reported is only what changed somewhere else.
+const seenFile = path.join(specsDir, ".last-seen.json")
+const readSeen = () => {
+  try {
+    return JSON.parse(readFileSync(seenFile, "utf8"))
+  } catch {
+    return null
+  }
+}
+const writeSeen = (seen) => writeFileSync(seenFile, `${JSON.stringify(seen, null, 2)}\n`)
+const glimpse = (spec, byName) => ({ kind: spec.kind, status: statusOf(spec), hash: hashOf(spec, byName) })
+const snapshot = (specs) => {
+  const byName = byNameOf(specs.all)
+  return Object.fromEntries(specs.all.map((spec) => [spec.name, glimpse(spec, byName)]))
+}
+
+// One line per spec that changed, saying what it means for Claude. Claude offers the next step; it never starts
+// building or verifying on its own because a status moved.
+const BUILT = ["implemented", "verified"]
+const changeNotes = (seen, now) => {
+  const notes = []
+  for (const [name, { kind, status, hash }] of Object.entries(now)) {
+    const was = seen[name]
+    if (!was) {
+      if (status !== "draft") notes.push(`${name} (${kind}) is new, and already ${status}: read it before working on anything it covers.`)
+      continue
+    }
+    if (was.status !== status) {
+      if (was.status === "deprecated") {
+        notes.push(
+          `${name} was brought back (deprecated → ${status}). Finish reviving it: remove its \`deprecated\` and \`replaced_by\` lines, ` +
+            `add a dated line under ## Decisions saying it was revived, and put it back in specs/outline.md. Then offer to build it.`,
+        )
+      } else if (status === "deprecated") {
+        notes.push(`${name} was deprecated. Take it off specs/outline.md if it's there, and don't build on it from now on.`)
+      } else if (status === "approved" && was.status === "draft") {
+        notes.push(`${name} was approved. Offer to build it; don't start until the user says so.`)
+      } else if (status === "verified") {
+        notes.push(`${name} was marked verified by hand. Lint checks it has a passing report; if it doesn't, say so.`)
+      } else if (status === "draft") {
+        notes.push(`${name} went back to draft (from ${was.status}): it's being reworked, so don't build on it until it's approved again.`)
+      } else {
+        notes.push(`${name} went from ${was.status} to ${status}${BUILT.includes(was.status) && !BUILT.includes(status) ? ": it needs building again" : ""}.`)
+      }
+    } else if (was.hash !== hash && status !== "draft" && status !== "deprecated") {
+      notes.push(
+        BUILT.includes(status)
+          ? `${name} changed after it was built (its own text, or a policy it relies on). Check the code still matches it` +
+              `${status === "verified" ? `, and set it to implemented: its report no longer matches, so it needs /spec-verify again` : ", and offer to re-verify it"}.`
+          : `${name} changed since you last read it. Re-read it before building on it.`,
+      )
+    }
+  }
+  for (const name of Object.keys(seen)) if (!now[name]) notes.push(`${name} was deleted.`)
+  return notes
+}
+
+const hookSeen = () => {
+  const { hook_event_name: event = "UserPromptSubmit" } = readStdin()
+  if (!existsSync(specsDir)) return
+  const now = snapshot(loadAll())
+  const seen = readSeen()
+  writeSeen(now)
+  // The first run only records what's there.
+  const notes = seen ? changeNotes(seen, now) : []
+  if (notes.length === 0) return
+  const context =
+    `Spec changes since you last looked, made outside this session (by the user, or a git pull):\n` +
+    `${notes.map((n) => `- ${n}`).join("\n")}\n` +
+    `Tell the user briefly what you noticed and offer the next step for each. Don't start building or verifying unasked.`
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: context } }))
+}
+
+// After Claude edits a spec, record what it now looks like, along with any spec whose fingerprint that edit
+// changes (those relying on an edited policy), so Claude isn't told about its own changes.
+const markSeen = (specs, file) => {
+  const seen = readSeen()
+  const edited = specs.all.find((s) => s.file === file)
+  if (!seen || !edited) return
+  const byName = byNameOf(specs.all)
+  const reached = specs.live.filter((s) => reliesOn(s, byName).some((r) => r.spec.name === edited.name))
+  for (const spec of [edited, ...reached]) seen[spec.name] = glimpse(spec, byName)
+  writeSeen(seen)
+}
+
 const hookPost = () => {
   const { tool_input: input = {} } = readStdin()
   const file = input.file_path && path.resolve(input.file_path)
   if (!file || !existsSync(specsDir)) return
   const specs = loadAll()
+  if (file.startsWith(specsDir + path.sep)) markSeen(specs, file)
   const sourcesOf = (spec) => asList(spec.fm.source).map((src) => path.join(root, src))
   const sources = new Set(specs.all.flatMap(sourcesOf))
   if (!file.startsWith(specsDir + path.sep) && !sources.has(file)) return
@@ -924,6 +1019,7 @@ if (has("--version")) console.log(VERSION)
 else if (has("--hook-pre")) hookPre()
 else if (has("--hook-bash")) hookBash()
 else if (has("--hook-post")) hookPost()
+else if (has("--hook-seen")) hookSeen()
 else if (!existsSync(specsDir)) console.log(`no specs/ directory under ${root}`)
 else if (has("--new")) {
   const result = newSpec(argOf("--new"), args[args.indexOf("--new") + 2])
