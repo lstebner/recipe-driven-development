@@ -61,7 +61,7 @@ grep -q "^my notes$" "$older/specs/README.md.old" && pass "  ...keeping the old 
 rm "$older/specs/README.md.old"; "$kit/install.sh" "$older" --update >/dev/null 2>&1
 [[ ! -e "$older/specs/README.md.old" ]] && pass "  ...but only when it differs from the kit's" || fail "needless backup" "$(ls "$older/specs")"
 rm -rf "$older"
-[[ "$(grep -c spec-lint.mjs "$repo/.claude/settings.json")" == 5 && "$(grep -c rdd:start "$repo/CLAUDE.md")" == 1 && "$(grep -cxF specs/.last-seen.json "$repo/.gitignore")" == 1 ]] \
+[[ "$(grep -c spec-lint.mjs "$repo/.claude/settings.json")" == 6 && "$(grep -c rdd:start "$repo/CLAUDE.md")" == 1 && "$(grep -cxF specs/.last-seen.json "$repo/.gitignore")" == 1 ]] \
   && pass "install is idempotent" || fail "install is idempotent" "$out2"
 [[ -f "$repo/.claude/skills/spec-new/SKILL.md" && -f "$repo/.claude/skills/spec-review/SKILL.md" && -f "$repo/.claude/skills/spec-verify/SKILL.md" ]] \
   && pass "install adds the three skills" || fail "skills installed" "$(ls "$repo/.claude/skills")"
@@ -72,7 +72,7 @@ echo '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write|MultiEdit","hooks":[{"type"
 "$kit/install.sh" "$old" --update >/dev/null
 [[ "$(grep -c rdd:start "$old/CLAUDE.md")" == 1 && "$(grep -c spec-kit "$old/CLAUDE.md")" == 0 && "$(grep -c '^after$' "$old/CLAUDE.md")" == 1 ]] \
   && pass "--update replaces an old spec-kit rules block in place" || fail "--update rules block" "$(cat "$old/CLAUDE.md")"
-[[ "$(grep -c spec-lint.mjs "$old/.claude/settings.json")" == 5 ]] && pass "re-install adds the missing hooks" || fail "hook merge" "$(cat "$old/.claude/settings.json")"
+[[ "$(grep -c spec-lint.mjs "$old/.claude/settings.json")" == 6 ]] && pass "re-install adds the missing hooks" || fail "hook merge" "$(cat "$old/.claude/settings.json")"
 node -e 'const s = require(process.argv[1]); process.exit(s.spinnerVerbs?.mode === "replace" && s.spinnerVerbs.verbs.includes("Checking the pantry") ? 0 : 1)' "$repo/.claude/settings.json" \
   && pass "install sets kitchen spinner verbs" || fail "spinner verbs" "$(cat "$repo/.claude/settings.json")"
 mine="$(mktemp -d)"; mkdir -p "$mine/.claude"; echo '{"spinnerVerbs":{"mode":"append","verbs":["Mine"]}}' > "$mine/.claude/settings.json"
@@ -676,21 +676,47 @@ out="$(seen SessionStart)"
 [[ "$out" == *'"hookEventName":"SessionStart"'* && "$out" == *"AlbumDetail changed after it was built"*"set it to implemented"* ]] \
   && pass "seen: a hand edit to a verified spec sends it back to be re-verified" || fail "seen: hand edit" "$out"
 mv "$screen.bak" "$screen"; seen >/dev/null
-sed -i 's/^## Goal$/## Goal\nBrowse everything you own./' "$lib"
-hook post "$(edit_json "$lib" x y)" >/dev/null
+own_edit() { # own_edit <file> <sed expr> [id]: what Claude's Edit does, hooks and all
+  local json; json="$(node -e 'console.log(JSON.stringify({ tool_name: "Edit", tool_use_id: process.argv[3] || undefined, tool_input: { file_path: process.argv[1], old_string: "x", new_string: "y" } }))' "$1" "$2" "${3:-}")"
+  hook pre "$json" >/dev/null; sed -i "$2" "$1"; hook post "$json" >/dev/null
+}
+own_edit "$lib" 's/^## Goal$/## Goal\nBrowse everything you own./'
 out="$(seen)"; [[ -z "$out" ]] && pass "seen: Claude's own edits aren't reported back to it" || fail "seen: own edit" "$out"
-sed -i 's/^status: approved$/status: deprecated\ndeprecated: 2026-10-25/' "$lib"
-out="$(seen)"; [[ "$out" == *"Library was deprecated. Take it off specs/outline.md"* ]] && pass "seen: a deprecation by hand is noticed" || fail "seen: deprecated" "$out"
+sed -i 's/^status: approved$/status: implemented/' "$lib"; seen >/dev/null
+sed -i 's/^Browse everything you own.$/Browse every album you own./' "$lib"
+own_edit "$lib" 's/^status: implemented$/status: implemented\nsource: [src\/AlbumDetail.tsx]/'
+out="$(seen)"; [[ "$out" == *"Library changed after it was built"* ]] && pass "seen: a change made before Claude's own edit is still reported" || fail "seen: absorbed" "$out"
+cp "$lib" "$lib.bak"; sed -i 's/^status: implemented$/status: approved/; s/^Browse every album you own.$/Browse all your albums./' "$lib"
+out="$(seen)"; [[ "$out" == *"Library went from implemented to approved: it needs building again."*"Library changed since you last read it"* ]] \
+  && pass "seen: a status change doesn't hide a content change" || fail "seen: both" "$out"
+mv "$lib.bak" "$lib"; seen >/dev/null
+lib2="$repo/specs/screens/Library2.md"; sed 's/^screen: Library$/screen: Library2/' "$lib" > "$lib2"; seen >/dev/null
+own_edit "$lib" 's/^Browse every album you own.$/Browse it all./' a & own_edit "$lib2" 's/^Browse every album you own.$/Browse it all./' b & wait
+out="$(seen)"; [[ -z "$out" ]] && pass "seen: two of Claude's edits at once are both recorded" || fail "seen: parallel" "$out"
+cmd="sed -i 's/Browse it all./Browse everything./' specs/screens/Library2.md"
+hook bash "$(bash_json "$cmd")" >/dev/null; (cd "$repo" && eval "$cmd"); hook bash-post "$(bash_json "$cmd")" >/dev/null
+out="$(seen)"; [[ -z "$out" ]] && pass "seen: a shell command of Claude's that changes specs is recorded too" || fail "seen: bash" "$out"
+rm "$lib2"; seen >/dev/null
+echo "- Library" >> "$repo/specs/outline.md"
+sed -i 's/^status: implemented$/status: deprecated\ndeprecated: 2026-10-25/' "$lib"
+out="$(seen)"; [[ "$out" == *"Library was deprecated. Take it off specs/outline.md, and don't build on it from now on."* ]] && pass "seen: a deprecation by hand is noticed" || fail "seen: deprecated" "$out"
 sed -i 's/^status: deprecated$/status: approved/' "$lib"
 out="$(seen)"
-[[ "$out" == *"Library was brought back (deprecated → approved). Finish reviving it"*"put it back in specs/outline.md"* ]] \
-  && pass "seen: bringing a spec back is noticed, with the clean-up to do" || fail "seen: revived" "$out"
+[[ "$out" == *"Library was brought back (deprecated → approved). Finish reviving it: remove its \`deprecated\`"*"add a dated line under ## Decisions"* && "$out" != *"put it back in specs/outline.md"* ]] \
+  && pass "seen: bringing a spec back is noticed, with only the clean-up still to do" || fail "seen: revived" "$out"
 expect_err "  ...and lint says what to do with the leftover fields" '"deprecated" belongs only on a deprecated spec (status is approved); if it'"'"'s been brought back, remove it'
 out="$(hook pre "$(edit_json "$lib" $'deprecated: 2026-10-25\n' '')")"
 [[ -z "$out" ]] && pass "pre: clearing a revived spec's deprecation fields doesn't ask" || fail "pre: revive clean-up" "$out"
 out="$(hook pre "$(edit_json "$lib" "status: approved" $'status: approved\nreplaced_by: AlbumDetail')")"
 [[ "$out" == *'"ask"'* ]] && pass "  ...but adding one still does" || fail "pre: add deprecation field" "$out"
+sed -i '/^- Library$/d' "$repo/specs/outline.md"
 rm "$lib"; out="$(seen)"; [[ "$out" == *"Library was deleted."* ]] && pass "seen: a deleted spec is noticed" || fail "seen: deleted" "$out"
+echo "{ not json" > "$repo/specs/.last-seen.json"
+out="$(seen)"; [[ "$out" == *"couldn't be read, so changes since then can't be listed"* ]] && pass "seen: an unreadable record is said, not silently replaced" || fail "seen: corrupt" "$out"
+out="$(seen)"; [[ -z "$out" ]] && pass "  ...and it starts afresh" || fail "seen: corrupt restart" "$out"
+gi="$(mktemp -d)"; printf 'node_modules\r\n/specs/.last-seen.json \r\n' > "$gi/.gitignore"; "$kit/install.sh" "$gi" >/dev/null
+[[ "$(grep -c "last-seen" "$gi/.gitignore")" == 1 ]] && pass "install recognises an existing .gitignore entry, CRLF and all" || fail "gitignore dup" "$(cat -A "$gi/.gitignore")"
+rm -rf "$gi"
 
 echo "example"
 example="$kit/examples/music-store"

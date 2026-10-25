@@ -73,6 +73,7 @@ for (const [event, matcher, flag] of [
   ["PreToolUse", "Edit|Write|MultiEdit", "--hook-pre"],
   ["PreToolUse", "Bash", "--hook-bash"],
   ["PostToolUse", "Edit|Write|MultiEdit", "--hook-post"],
+  ["PostToolUse", "Bash", "--hook-bash-post"],
   ["SessionStart", null, "--hook-seen"],
   ["UserPromptSubmit", null, "--hook-seen"],
 ]) {
@@ -91,7 +92,8 @@ console.log(`  ${added || spinner ? "merge  " : "keep   "} .claude/settings.json
 EOF
 
 # .gitignore: what Claude last saw of each spec is per checkout, so a teammate's changes show up after a pull.
-if ! grep -qsxF "specs/.last-seen.json" "$target/.gitignore"; then
+# Compare lines without CR line endings, trailing whitespace or a leading "/", so an existing entry is recognised.
+if ! { tr -d '\r' < "$target/.gitignore" | sed 's/[[:space:]]*$//; s#^/##' | grep -qxF "specs/.last-seen.json"; } 2>/dev/null; then
   { [[ -s "$target/.gitignore" && -n "$(tail -c1 "$target/.gitignore")" ]] && echo; echo "specs/.last-seen.json"; } >> "$target/.gitignore"
   echo "  append  .gitignore (specs/.last-seen.json)"
 else

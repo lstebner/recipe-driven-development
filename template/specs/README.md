@@ -160,7 +160,9 @@ You don't have to tell Claude when you change a spec yourself. `specs/.last-seen
 what Claude last saw of each spec (its status and fingerprint). It's ignored by git, so it's
 per checkout. At the start of a session and on each message you send, a hook compares the specs
 with it and tells Claude what changed somewhere else: your own edits, or a teammate's after a
-`git pull`. Claude's own edits are recorded as it makes them, so it isn't told about those.
+`git pull`. Claude's own changes, through its edit tools or a shell command it ran, are recorded
+as it makes them, so it isn't told about those. If you'd already changed the same spec, your
+change is still reported.
 
 | what changed | what Claude does |
 |---|---|
@@ -172,9 +174,10 @@ with it and tells Claude what changed somewhere else: your own edits, or a teamm
 | anything → `verified`, by hand | leaves it to lint to check the report, and says so if it fails |
 | back to `draft` | stops building on it until it's approved again |
 
-Claude only offers. It doesn't start building or verifying because a status moved. The first
-run just records what's there. If you run two sessions at once, whichever sees a change first is
-the one that's told.
+A spec whose status and content both changed gets a note for each. Claude only offers: it doesn't
+start building or verifying because a status moved. The first run just records what's there, and
+if the record can't be read, Claude says so and starts it afresh. If you run two sessions at
+once, whichever sees a change first is the one that's told.
 
 ## Screen spec
 
