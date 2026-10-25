@@ -15,11 +15,17 @@ bumps `VERSION` in `template/scripts/spec-lint.mjs` to match.
 ## Unreleased
 
 - Specs can be deprecated: `status: deprecated` with a `deprecated:` date and an optional
-  `replaced_by:` (a live spec of the same kind). A deprecated spec is frozen, drops out of Used
-  by, is skipped by the content checks, and is listed in `--summary` with any tests still tagged
-  with its rules. Replacements that are deprecated in turn form a chain, and messages name the
-  live spec at its end. **Breaking** (narrowly): `deprecated` and `replaced_by` are now reserved
-  frontmatter keys, so a live spec that already uses either one fails lint. Rename the key.
+  `replaced_by:` (a live spec of the same kind, past draft). A deprecated spec is frozen, drops
+  out of Used by, is skipped by the content checks, and is listed in `--summary` with any tests
+  still tagged with its rules. Replacements that are deprecated in turn form a chain, and
+  messages name the live spec at its end. **Breaking** (narrowly): `deprecated` and
+  `replaced_by` are now reserved frontmatter keys, so a live spec that already uses either one
+  fails lint. Rename the key.
+- Text between a spec's frontmatter and its first heading (a title or intro) is now protected
+  and part of the fingerprint. **Breaking** for specs that have such text: a verified one's
+  report goes stale, so re-run `/spec-verify`. Specs that start with a `##` heading are unaffected.
+- `install.sh --update` refuses to downgrade a repo that has a newer kit than the one you're
+  running it from.
 
 ## 0.1.0 (2026-10-25)
 

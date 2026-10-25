@@ -121,7 +121,9 @@ const loadAll = () => {
   const all = Object.entries(KINDS).flatMap(([kind, { dir }]) => listSpecs(path.join(specsDir, dir), kind))
   const tokensFile = path.join(specsDir, "tokens.md")
   const tokens = existsSync(tokensFile) ? loadSpec(tokensFile, "tokens") : null
-  return { all, tokens, outline: parseOutline(), components: all.filter((s) => s.kind === "component") }
+  const live = all.filter((s) => !isDeprecated(s))
+  const deprecated = all.filter(isDeprecated)
+  return { all, live, deprecated, tokens, outline: parseOutline(), components: all.filter((s) => s.kind === "component") }
 }
 
 // specs/outline.md: a quick list of everything planned, under ## Screens, ## Components, ## Flows,
@@ -189,7 +191,10 @@ const membersOf = (spec) =>
   spec.kind === "model" ? tableKeys(spec.sections.fields).map((k) => k.key) : spec.kind === "api" ? tableKeys(spec.sections.errors).map((k) => k.key) : []
 
 const isDeprecated = (spec) => spec.fm.status === "deprecated"
-const replacementsOf = (spec) => asList(spec.fm.replaced_by)
+// The frontmatter parser keeps quotes, so `deprecated: "2026-10-24"` would otherwise fail the date check.
+const unquote = (value) => (typeof value === "string" ? value.replace(/^(["'])(.*)\1$/, "$2") : value)
+const deprecatedOn = (fm) => unquote(fm.deprecated)
+const replacementsOf = (spec) => asList(spec.fm.replaced_by).map(unquote)
 
 // Follow replaced_by through specs that were deprecated in turn, to the live specs at the end of each chain
 // (A → B → C gives C). A chain that ends at a spec with no replacement adds nothing: that behaviour is going
@@ -216,26 +221,38 @@ const resolveReplacements = (spec, byName, trail = [spec.name]) => {
 const deprecationNote = (spec, byName) => {
   const { live } = resolveReplacements(spec, byName)
   const what = live.length ? `; use ${live.join(", ")} instead` : replacementsOf(spec).length ? `; nothing live replaces it` : ""
-  return `deprecated on ${spec.fm.deprecated || "?"}${what}`
+  return `deprecated on ${deprecatedOn(spec.fm) || "?"}${what}`
 }
 const byNameOf = (all) => new Map(all.map((s) => [s.name, s]))
 
 // A real calendar date as YYYY-MM-DD. Date.parse alone rolls 2026-02-30 over into March, so round-trip it.
 const isDate = (text) => /^\d{4}-\d{2}-\d{2}$/.test(text) && !Number.isNaN(Date.parse(text)) && new Date(text).toISOString().slice(0, 10) === text
 
-const dateProblems = (fm) => (isDate(fm.deprecated ?? "") ? [] : [`"deprecated" must be the date it was deprecated, as YYYY-MM-DD (got "${fm.deprecated ?? ""}")`])
+const dateProblems = (fm) => (isDate(deprecatedOn(fm) ?? "") ? [] : [`"deprecated" must be the date it was deprecated, as YYYY-MM-DD (got "${deprecatedOn(fm) ?? ""}")`])
 
-// What's wrong with the replacements named when a spec is deprecated: each must be a live spec of the same kind.
-// The hook enforces this at the moment of deprecating. Afterwards a replacement may be deprecated in turn, which
-// just makes the chain longer; lint only warns if the chain breaks (see resolveReplacements).
-const replacementProblems = (fm, name, kind, byName) => {
+// Problems with replaced_by that can never come right on their own: a spec can't replace itself, or be replaced by
+// a spec of another kind. Lint checks these on every deprecated spec, including one deprecated by hand.
+const lastingReplacementProblems = (fm, name, kind, byName) => {
   const problems = []
-  for (const replacement of asList(fm.replaced_by)) {
+  for (const replacement of replacementsOf({ fm })) {
     const target = byName.get(replacement)
     if (replacement === name) problems.push(`it can't be replaced by itself`)
-    else if (!target) problems.push(`replaced_by names ${replacement}, which has no spec`)
-    else if (target.kind !== kind) problems.push(`replaced_by names ${replacement}, which is a ${target.kind} spec; it must be another ${kind} spec`)
+    else if (target && target.kind !== kind) problems.push(`replaced_by names ${replacement}, which is a ${target.kind} spec; it must be another ${kind} spec`)
+  }
+  return problems
+}
+
+// At the moment of deprecating, each replacement must also exist and be live past draft: a draft can be deleted
+// rather than deprecated, which would leave this frozen spec pointing at nothing. Afterwards a replacement may be
+// deprecated in turn, which just makes the chain longer; lint only warns if the chain breaks (see resolveReplacements).
+const replacementProblems = (fm, name, kind, byName) => {
+  const problems = lastingReplacementProblems(fm, name, kind, byName)
+  for (const replacement of replacementsOf({ fm })) {
+    const target = byName.get(replacement)
+    if (replacement === name || (target && target.kind !== kind)) continue
+    if (!target) problems.push(`replaced_by names ${replacement}, which has no spec`)
     else if (isDeprecated(target)) problems.push(`replaced_by names ${replacement}, which is itself ${deprecationNote(target, byName)}`)
+    else if ((target.fm.status ?? "draft") === "draft") problems.push(`replaced_by names ${replacement}, which is still a draft; approve it first, or leave replaced_by out and say what's coming under Decisions`)
   }
   return problems
 }
@@ -271,13 +288,23 @@ const openAmendments = (text) =>
 
 // ---------- fingerprint & reports ----------
 
+// Each section's text by its lowercase name, trimmed so whitespace-only edits don't count as changes. Anything
+// between the frontmatter and the first heading (a title, an intro) is a part of its own.
+const INTRO = "intro (before the first heading)"
+const sectionTexts = (text) => {
+  const normal = normalize(text)
+  const clean = (lines) => lines.map((l) => l.trimEnd()).join("\n").trim()
+  const texts = {}
+  const intro = clean(normal.replace(/^---\n[\s\S]*?\n---\n/, "").split(/^## /m)[0].split("\n"))
+  if (intro) texts[INTRO.toLowerCase()] = { name: INTRO, text: intro }
+  for (const [key, section] of Object.entries(parseSections(normal))) texts[key] = { name: section.name, text: clean(section.lines.map((l) => l.text)) }
+  return texts
+}
+
 // Everything a non-draft spec protects: frontmatter plus every section except the unprotected ones.
 const protectedParts = (text) => {
-  const normal = normalize(text)
-  const parts = { frontmatter: JSON.stringify(parseFrontmatter(normal).data ?? {}) }
-  for (const [key, section] of Object.entries(parseSections(normal))) {
-    if (!UNPROTECTED_SECTIONS.includes(key)) parts[section.name] = section.lines.map((l) => l.text.trimEnd()).join("\n").trim()
-  }
+  const parts = { frontmatter: JSON.stringify(parseFrontmatter(normalize(text)).data ?? {}) }
+  for (const [key, { name, text: body }] of Object.entries(sectionTexts(text))) if (!UNPROTECTED_SECTIONS.includes(key)) parts[name] = body
   return parts
 }
 
@@ -312,7 +339,7 @@ const checkReport = (spec) => {
 
 // ---------- linting ----------
 
-const lint = ({ all, tokens, outline }) => {
+const lint = ({ all, live, tokens, outline }) => {
   const problems = []
   const report = (level, spec, n, message) => problems.push({ level, file: rel(spec.file), n, message })
   const byName = new Map()
@@ -341,7 +368,7 @@ const lint = ({ all, tokens, outline }) => {
     // anything or claiming an endpoint. A bad date is its own error. A replacement deprecated in turn is fine (the
     // chain is followed); one that's gone is only a warning, since fixing it would mean editing the frozen spec.
     if (isDeprecated(spec)) {
-      for (const problem of dateProblems(fm)) report("error", spec, 1, `status is deprecated but ${problem}`)
+      for (const problem of [...dateProblems(fm), ...lastingReplacementProblems(fm, spec.name, kind, byName)]) report("error", spec, 1, `status is deprecated but ${problem}`)
       for (const problem of resolveReplacements(spec, byName).broken) report("warning", spec, 1, `deprecated, but its chain of replacements is broken: ${problem}`)
       continue
     }
@@ -399,7 +426,10 @@ const lint = ({ all, tokens, outline }) => {
     const declaredLocal = new Set(fm.local === undefined ? local : asList(fm.local))
     for (const ref of refs) {
       if (ref.local) {
-        if (componentNames.has(ref.name)) report("error", spec, ref.n, `[[~${ref.name}]] is marked one-off but a shared spec exists — use [[${ref.name}]] or rename the one-off`)
+        const namesake = componentNames.get(ref.name)
+        // A deprecated component's name stays taken, but pointing at it would mean building on it.
+        if (namesake && isDeprecated(namesake)) report("error", spec, ref.n, `[[~${ref.name}]] has the name of a shared component that's ${deprecationNote(namesake, byName)} — give the one-off another name`)
+        else if (namesake) report("error", spec, ref.n, `[[~${ref.name}]] is marked one-off but a shared spec exists — use [[${ref.name}]] or rename the one-off`)
         if (shared.has(ref.name)) report("error", spec, ref.n, `${ref.name} is used both as shared and as a one-off`)
         continue
       }
@@ -506,7 +536,7 @@ const lint = ({ all, tokens, outline }) => {
   }
 
   // Used by must match what's generated.
-  for (const spec of all.filter((s) => KINDS[s.kind].usedBy && !isDeprecated(s))) {
+  for (const spec of live.filter((s) => KINDS[s.kind].usedBy)) {
     const expected = usedByLines(spec, usersOf)
     const actual = (spec.sections["used by"]?.lines ?? []).map((l) => l.text.trim()).filter((t) => t.startsWith("-"))
     if (expected.join("\n") !== actual.join("\n")) report("error", spec, spec.sections["used by"]?.line ?? 1, `"Used by" is stale — run: node scripts/spec-lint.mjs --fix`)
@@ -528,7 +558,7 @@ const usedByLines = (spec, usersOf) => {
 const fixUsedBy = (specs) => {
   const { usersOf } = lint(specs)
   const changed = []
-  for (const spec of specs.all.filter((s) => KINDS[s.kind].usedBy && !isDeprecated(s))) {
+  for (const spec of specs.live.filter((s) => KINDS[s.kind].usedBy)) {
     const block = `## Used by\n${USED_BY_MARK}\n${usedByLines(spec, usersOf).join("\n")}\n`
     const existing = /^## Used by\s*\n[\s\S]*?(?=^## |$(?![\s\S]))/m
     let next
@@ -563,7 +593,7 @@ const walk = (dir, out = []) => {
 const summary = (specs) => {
   const { problems, usersOf, localOwners } = lint(specs)
   const tests = walk(root).map((f) => readFileSync(f, "utf8"))
-  const live = specs.all.filter((s) => !isDeprecated(s))
+  const { live, deprecated } = specs
   const rows = live.map((spec) => {
     const ids = rulesOf(spec).map((r) => r.id).filter(Boolean)
     const tagged = ids.filter((id) => tests.some((t) => t.includes(`[${id}]`))).length
@@ -582,12 +612,13 @@ const summary = (specs) => {
   if (localOwners.size === 0) out.push("  (none)")
   for (const [name, owners] of localOwners) out.push(`  ~${name.padEnd(widths[0] - 1)}  in ${owners.map((s) => s.name).join(", ")}${owners.length > 1 ? "  ⚠ in more than one spec" : ""}`)
   // Deprecated specs, with any tests still tagged with their rules: those are code that hasn't caught up yet.
-  const deprecated = specs.all.filter(isDeprecated)
   if (deprecated.length) out.push("", "Deprecated (frozen):")
+  const byName = byNameOf(specs.all)
   for (const spec of deprecated) {
     const tagged = rulesOf(spec).map((r) => r.id).filter((id) => id && tests.some((t) => t.includes(`[${id}]`)))
-    const replaced = replacementsOf(spec).length ? `  → ${replacementsOf(spec).join(", ")}` : ""
-    out.push(`  ${spec.name.padEnd(widths[0])}  ${spec.kind.padEnd(9)}  ${spec.fm.deprecated || "?"}${replaced}${tagged.length ? `  ⚠ tests still tagged: ${tagged.join(", ")}` : ""}`)
+    const { live: replacements } = resolveReplacements(spec, byName)
+    const replaced = replacements.length ? `  → ${replacements.join(", ")}` : replacementsOf(spec).length ? "  → nothing live" : ""
+    out.push(`  ${spec.name.padEnd(widths[0])}  ${spec.kind.padEnd(9)}  ${deprecatedOn(spec.fm) || "?"}${replaced}${tagged.length ? `  ⚠ tests still tagged: ${tagged.join(", ")}` : ""}`)
   }
   return out.join("\n")
 }
@@ -604,6 +635,7 @@ const newSpec = (kind, name, note = "") => {
   if (!/^[A-Za-z]\w*$/.test(name ?? "")) return { error: `"${name ?? ""}" isn't a valid spec name — use one word like AlbumDetail` }
   const file = path.join(specsDir, KINDS[kind].dir, `${name}.md`)
   const taken = loadAll().all.find((s) => s.name === name)
+  if (taken && isDeprecated(taken)) return { error: `the name ${name} belongs to ${rel(taken.file)}, which is deprecated; a deprecated spec keeps its name for good, so pick a new one` }
   if (taken) return taken.kind === kind ? { kept: file } : { error: `the name ${name} is already taken by ${rel(taken.file)}` }
   const template = path.join(specsDir, "_templates", `${kind}.md`)
   if (!existsSync(template)) return { error: `there's no template at ${rel(template)}` }
@@ -708,10 +740,10 @@ const hookPre = () => {
     if (to === "deprecated") {
       // A draft was never agreed on, so there's nothing to keep a record of.
       if (from === "draft") return decide("deny", `${name} is a draft, so there's nothing to keep a record of: delete it instead of deprecating it (and take it off the outline).`)
-      const all = loadAll().all
+      const { all, deprecated } = loadAll()
       const problems = [...dateProblems(newFm), ...replacementProblems(newFm, name, kind, byNameOf(all))]
       const strip = (fm) => JSON.stringify(Object.fromEntries(Object.entries(fm).filter(([k]) => !["status", ...DEPRECATION_KEYS].includes(k))))
-      const sectionText = (text, key) => (parseSections(normalize(text))[key]?.lines ?? []).map((l) => l.text.trimEnd()).join("\n").trim()
+      const sectionText = (text, key) => sectionTexts(text)[key]?.text ?? ""
       const also = [
         ...(strip(oldFm) !== strip(newFm) ? ["frontmatter"] : []),
         ...changed.filter((k) => k !== "frontmatter"),
@@ -719,9 +751,9 @@ const hookPre = () => {
       ]
       if (also.length) problems.push(`deprecate it in an edit of its own; this one also changes ${also.join(", ")}`)
       if (problems.length) return decide("deny", `${name} can't be deprecated like this: ${problems.join("; ")}.`)
-      const replaced = asList(newFm.replaced_by)
+      const replaced = replacementsOf({ fm: newFm })
       // Specs already deprecated in favour of this one will point at a deprecated spec from now on.
-      const pointing = all.filter((s) => isDeprecated(s) && replacementsOf(s).includes(name)).map((s) => s.name)
+      const pointing = deprecated.filter((s) => replacementsOf(s).includes(name)).map((s) => s.name)
       return decide(
         "ask",
         `Deprecate ${name} (${from} → deprecated)${replaced.length ? `, replaced by ${replaced.join(", ")}` : ", with no replacement"}? ` +
@@ -793,7 +825,7 @@ const hookPost = () => {
   const sources = new Set(specs.all.flatMap(sourcesOf))
   if (!file.startsWith(specsDir + path.sep) && !sources.has(file)) return
   // Code often outlives its spec. Remind Claude, so it moves the code toward the replacement rather than extending it.
-  const frozen = specs.all.filter((s) => isDeprecated(s) && sourcesOf(s).includes(file))
+  const frozen = specs.deprecated.filter((s) => sourcesOf(s).includes(file))
   const note = frozen
     .map((s) => `${rel(file)} is a source of ${s.name}, which is ${deprecationNote(s, byNameOf(specs.all))}. Don't build on what ${s.name} describes.`)
     .join("\n")

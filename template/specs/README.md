@@ -78,9 +78,9 @@ doesn't match the kind of spec it became.
 | `verified` | every rule passed `/spec-verify`, and you tasted it | Claude proposes it; **you confirm** |
 | `deprecated` | off the menu: kept as a record, never built against or edited again | Claude proposes it; **you confirm** |
 
-Once a spec leaves `draft`, its frontmatter and every section except **Used by**,
-**Open amendments** and **Decisions** are protected. Claude Code will ask your permission
-before any edit touches them.
+Once a spec leaves `draft`, its frontmatter, anything before its first heading, and every
+section except **Used by**, **Open amendments** and **Decisions** are protected. Claude Code will
+ask your permission before any edit touches them.
 
 ### Tasting (`verified`)
 
@@ -118,9 +118,10 @@ endpoint: GET /albums/{id}/price
 
 Say "deprecate GetAlbumPrice, GetAlbum replaces it" and Claude sets these fields, adding a dated
 line under Decisions saying why, in one edit that changes nothing else. The hook checks that the
-date is real and that each replacement is a live spec of the same kind, then asks you to
-confirm. Claude also takes it off `outline.md`, which lists only what's current; lint fails
-until it does. A draft was never agreed on, so there's nothing to keep: delete it instead.
+date is real and that each replacement is a live spec of the same kind and past draft (a draft
+could be deleted, leaving the frozen spec pointing at nothing), then asks you to confirm. Claude
+also takes it off `outline.md`, which lists only what's current; lint fails until it does. A
+draft was never agreed on, so there's nothing to keep: delete it instead.
 
 From then on the spec is **frozen**:
 
