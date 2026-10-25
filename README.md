@@ -3,9 +3,9 @@
 A workflow for building with AI coding tools, borrowed from the kitchen:
 
 - **You're the head chef.** You decide what goes on the menu. Each recipe is a spec in
-  constrained markdown that says what a screen, component, flow, data model, API or policy should be,
-  with rules that can be checked. Claude can draft them for you, but nothing is built until you
-  approve the recipe.
+  constrained markdown that says what a screen, component, flow, data model, API or policy should
+  be, with rules that can be checked. Claude can draft them for you, but nothing is built until
+  you approve the recipe.
 - **The AI is the cook.** Claude Code reviews the recipe, builds against it and checks its own
   work against it. It can't change an approved recipe without your sign-off: if it finds a
   problem, it proposes an amendment and you accept or reject it with one click.
@@ -35,9 +35,9 @@ the code works. Specs are for you as the developer, to make sure everything is w
 your vision.
 
 In this framework, a spec (or recipe) is a short markdown file describing how a model, API,
-policy, component, screen or flow should behave. It describes behaviour, not implementation, so Claude
-keeps its freedom over how the code is written. Specs start as drafts, which Claude can help you
-write. Once you approve one, it's the source of truth:
+policy, component, screen or flow should behave. It describes behaviour, not implementation, so
+Claude keeps its freedom over how the code is written. Specs start as drafts, which Claude can
+help you write. Once you approve one, it's the source of truth:
 
 - **Fewer assumptions.** You settle the behaviour up front, and `/spec-review` flags anything
   vague before it's built, so there's less left for Claude to guess.

@@ -1,9 +1,9 @@
 # Specs
 
 This folder holds the recipes. You're the head chef: you decide what each screen, component,
-flow, data model, API and policy should be. Claude can draft the recipe from what you've told it, but it
-only becomes binding when you approve it. Claude is the cook: it plans, implements and checks its
-work against the recipe, and **never changes a recipe silently**. Any change to an approved spec
+flow, data model, API and policy should be. Claude can draft the recipe from what you've told
+it, but it only becomes binding when you approve it. Claude is the cook: it plans, implements and
+checks its work against the recipe, and **never changes a recipe silently**. Any change to an approved spec
 is proposed as an amendment that you accept or reject. And nothing is done until you've tasted
 it: a spec only becomes `verified` when you confirm the result is what you meant.
 

@@ -14,8 +14,8 @@ specific changes (and for a non-draft spec, those changes go in as amendments; s
 1. Run `node scripts/spec-lint.mjs`. Lint errors are findings too; include them. If the spec is
    `deprecated`, don't review it: it's frozen. Say so, and offer to review its `replaced_by` instead.
 2. Read `specs/README.md` (the format), the target spec, every spec it references (`uses`,
-   `[[screen:…]]`, `[[flow:…]]`, `[[model:…]]`, `[[api:…]]`, `[[policy:…]]`), `specs/tokens.md` for UI, and any
-   other specs that reference the same components, models, APIs or policies.
+   `[[screen:…]]`, `[[flow:…]]`, `[[model:…]]`, `[[api:…]]`, `[[policy:…]]`), `specs/tokens.md`
+   for UI, and any other specs that reference the same components, models, APIs or policies.
 3. Go through the checklist below. For each problem, write the **exact text** you'd add or change.
    A finding with no proposed wording isn't useful.
 
@@ -70,7 +70,8 @@ partial data, very long text or names, zero / one / many items, first-time use.
 
 **Policies**
 - The rules decide every combination of inputs: no case where two rules disagree or none applies.
-  An Examples row for each tricky case (boundaries, missing inputs, overlapping roles) makes gaps easy to spot.
+  An Examples row for each tricky case (boundaries, missing inputs, overlapping roles) makes gaps
+  easy to spot.
 - Inputs are only what the decision needs. An input that's really about presentation (screen
   size, platform) usually means part of it belongs in the specs that use it instead.
 - Every spec in Used by takes the answer as given. Flag any that restate, filter or reorder it.
