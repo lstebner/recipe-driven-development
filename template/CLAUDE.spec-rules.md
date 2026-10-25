@@ -36,9 +36,9 @@ read it before writing or changing a spec.
   move it to the replacement (or point it out) rather than following the old spec. A live spec
   that still points at it needs an amendment.
 - **Deprecating** is the user's decision, like approving. When they ask, set `status: deprecated`,
-  `deprecated: <today's date, YYYY-MM-DD>` and `replaced_by: <Name>` if something replaces it, and
-  add a dated line under `## Decisions` saying why, all in one edit and changing nothing else; the
-  hook asks them to confirm. Then remove it from `specs/outline.md`. A draft isn't deprecated:
+  `deprecated: <today's date, YYYY-MM-DD>` and `replaced_by: <Name>` (a live spec of the same kind)
+  if something replaces it, and add a dated line under `## Decisions` saying why, all in one edit
+  and changing nothing else; the hook asks them to confirm. Then remove it from `specs/outline.md`. A draft isn't deprecated:
   delete it (and its outline entry) instead. You may suggest deprecating, but never do it unasked.
 - **Shared vs one-off:** before creating a component, check `specs/components/`. Reuse a shared
   component (adding a variant if only props or appearance differ) rather than forking it. A new

@@ -70,7 +70,8 @@ stays as a frozen record with the date and the reason, so Claude knows not to bu
 while old code still references it, and it points Claude at the replacement.
 
 See [`examples/music-store`](examples/music-store) for a small set of specs partway through a
-project: one verified, a few approved (one with an open amendment), and a couple of drafts.
+project: one verified, a few approved (one with an open amendment), a couple of drafts, and one
+deprecated.
 
 ## Installing
 
@@ -101,7 +102,7 @@ What gets installed into the repo:
 | `specs/_templates/` | `screen.md`, `component.md`, `flow.md`, `model.md`, `api.md` |
 | `specs/tokens.md` | design tokens, referenced as `$name` |
 | `scripts/spec-lint.mjs` | lint (`--fix` regenerates Used by, `--summary` prints a dashboard, `--hash` fingerprints a spec), scaffolding (`--new <kind> <Name>`, `--scaffold` from the outline); also the hook entry point. Node ≥ 18, no dependencies |
-| `.claude/settings.json` | **PreToolUse** hooks ask you before protected content in a non-draft spec changes (naming the amendment when Claude applies one), before a shell command that looks like it writes to `specs/`, and before anything is marked `verified` (which is refused outright without a passing report). A **PostToolUse** hook sends lint errors back to Claude. Also kitchen-themed `spinnerVerbs` ("Checking the pantry", "Mincing", "Deglazing"…), unless the repo already sets its own |
+| `.claude/settings.json` | **PreToolUse** hooks ask you before protected content in a non-draft spec changes (naming the amendment when Claude applies one), before a shell command that looks like it writes to `specs/`, before anything is marked `verified` (which is refused outright without a passing report), and before a spec is deprecated (any later edit to a deprecated spec is refused). A **PostToolUse** hook sends lint errors back to Claude, and reminds it when it edits the source of a deprecated spec. Also kitchen-themed `spinnerVerbs` ("Checking the pantry", "Mincing", "Deglazing"…), unless the repo already sets its own |
 | `.claude/skills/spec-new`, `spec-review`, `spec-verify` | `/spec-new [kind] <Name>[: what it's for]`, `/spec-review <Name>`, `/spec-verify <Name>` |
 | `CLAUDE.md` | rules block between `rdd:start` and `rdd:end` markers |
 
