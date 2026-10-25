@@ -55,7 +55,8 @@ Offer to verify its `replaced_by` instead.
    - **model:** exercise each Rule (invariant) against the real storage layer if you can.
    - **policy:** run the decision for each Examples row and each rule, and record what you
      gave it and what came back. Then check that each spec in Used by shows the same answer for
-     the same input (e.g. both navs, side by side, for each kind of visitor).
+     the same input (e.g. AlbumDetail, GetAlbum and CreateOrder agree for a listener who owns the
+     album, one who doesn't, and one whose order was refunded).
 6. Get the fingerprint with `node scripts/spec-lint.mjs --hash <Name>`, then write
    `specs/_reports/<Name>.md` (overwrite it) and show the user the summary table. The fingerprint
    covers the policies the spec references, so a verified spec whose policy has changed since its
