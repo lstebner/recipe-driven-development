@@ -118,8 +118,9 @@ endpoint: GET /albums/{id}/price
 
 Say "deprecate GetAlbumPrice, GetAlbum replaces it" and Claude sets these fields, adding a dated
 line under Decisions saying why, in one edit that changes nothing else. The hook checks that the
-date is real and that each replacement is a live spec of the same kind, then asks you to confirm. Claude also takes it off `outline.md`, which lists only what's current; lint
-fails until it does. A draft was never agreed on, so there's nothing to keep: delete it instead.
+date is real and that each replacement is a live spec of the same kind, then asks you to
+confirm. Claude also takes it off `outline.md`, which lists only what's current; lint fails
+until it does. A draft was never agreed on, so there's nothing to keep: delete it instead.
 
 From then on the spec is **frozen**:
 
@@ -136,9 +137,9 @@ From then on the spec is **frozen**:
   rules: that's code that hasn't caught up yet.
 - **Out of the way.** Lint checks only its deprecation fields, so missing source files or renamed
   references can't break it. If its replacement is later deprecated or deleted, lint warns rather
-  than fails, since the frozen spec can't be fixed. It drops out of everyone's Used by, and a replacement can claim the
-  same endpoint. Its name and rule IDs stay taken, so old commits and test names still point at
-  exactly one thing.
+  than fails, since the frozen spec can't be fixed. It drops out of everyone's Used by, and a
+  replacement can claim the same endpoint. Its name and rule IDs stay taken, so old commits and
+  test names still point at exactly one thing.
 
 ## Screen spec
 
