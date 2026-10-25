@@ -24,6 +24,10 @@ bumps `VERSION` in `template/scripts/spec-lint.mjs` to match.
 - Text between a spec's frontmatter and its first heading (a title or intro) is now protected
   and part of the fingerprint. **Breaking** for specs that have such text: a verified one's
   report goes stale, so re-run `/spec-verify`. Specs that start with a `##` heading are unaffected.
+- Quotes around frontmatter values are no longer kept as part of the value, so `status:
+  "approved"` and `api: "GetAlbum"` work as expected. **Breaking** for specs with quoted values
+  other than `status` and `source`: their fingerprint changes, so a verified one's report goes
+  stale. Re-run `/spec-verify`.
 - `install.sh --update` refuses to downgrade a repo that has a newer kit than the one you're
   running it from.
 

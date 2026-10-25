@@ -118,8 +118,9 @@ endpoint: GET /albums/{id}/price
 
 Say "deprecate GetAlbumPrice, GetAlbum replaces it" and Claude sets these fields, adding a dated
 line under Decisions saying why, in one edit that changes nothing else. The hook checks that the
-date is real and that each replacement is a live spec of the same kind and past draft (a draft
-could be deleted, leaving the frozen spec pointing at nothing), then asks you to confirm. Claude
+date is real, that each replacement is a live spec of the same kind and past draft (a draft
+could be deleted, leaving the frozen spec pointing at nothing), and that the Decisions line is
+there, since it can't be added once the spec is frozen. Then it asks you to confirm. Claude
 also takes it off `outline.md`, which lists only what's current; lint fails until it does. A
 draft was never agreed on, so there's nothing to keep: delete it instead.
 
