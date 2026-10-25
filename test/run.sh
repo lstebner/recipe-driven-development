@@ -26,6 +26,19 @@ edit_json() { # edit_json <file> <old> <new>
 echo "install"
 out="$("$kit/install.sh" "$repo")" || fail "install" "$out"
 out2="$("$kit/install.sh" "$repo")"
+version="$(node "$kit/template/scripts/spec-lint.mjs" --version)"
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && pass "--version prints the kit version" || fail "--version" "$version"
+grep -q "^## $version " "$kit/CHANGELOG.md" && pass "CHANGELOG.md has an entry for $version" || fail "changelog entry" "no '## $version' heading in CHANGELOG.md"
+[[ "$out" == *"Recipe-Driven Development $version into"* && "$out2" == *"already at $version"* ]] \
+  && pass "install names the version, and says when a repo is already at it" || fail "install version" "$out"$'\n'"$out2"
+older="$(mktemp -d)"; "$kit/install.sh" "$older" >/dev/null
+sed -i '/^const VERSION = /d' "$older/scripts/spec-lint.mjs"
+out="$("$kit/install.sh" "$older")"
+[[ "$out" == *"this repo has a version before 0.1.0; run with --update"* ]] && pass "install points an older repo at --update" || fail "install older" "$out"
+out="$("$kit/install.sh" "$older" --update)"
+[[ "$out" == *"updating from a version before 0.1.0 to $version"* && "$(node "$older/scripts/spec-lint.mjs" --version)" == "$version" ]] \
+  && pass "--update says which version it's updating from" || fail "--update version" "$out"
+rm -rf "$older"
 [[ "$(grep -c spec-lint.mjs "$repo/.claude/settings.json")" == 3 && "$(grep -c rdd:start "$repo/CLAUDE.md")" == 1 ]] \
   && pass "install is idempotent" || fail "install is idempotent" "$out2"
 [[ -f "$repo/.claude/skills/spec-new/SKILL.md" && -f "$repo/.claude/skills/spec-review/SKILL.md" && -f "$repo/.claude/skills/spec-verify/SKILL.md" ]] \
