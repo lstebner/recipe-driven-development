@@ -28,8 +28,13 @@ version="$(version_of "$tpl/scripts/spec-lint.mjs")"
 echo "Installing Recipe-Driven Development $version into $target"
 if [[ -f "$target/scripts/spec-lint.mjs" ]]; then
   installed="$(version_of "$target/scripts/spec-lint.mjs")"
+  # sort -V puts the newer of two versions last; no version at all counts as older than any.
+  newest="$(printf '%s\n%s\n' "${installed:-0}" "$version" | sort -V | tail -1)"
   if [[ "$installed" == "$version" ]]; then
     echo "  already at $version"
+  elif [[ "$newest" == "$installed" ]]; then
+    echo "  this repo has $installed, which is newer than this kit ($version); update your copy of the kit first"
+    [[ "$update" == --update ]] && { echo "  refusing to downgrade with --update; nothing was changed" >&2; exit 1; }
   elif [[ "$update" == --update ]]; then
     echo "  updating from ${installed:-a version before 0.1.0} to $version; see CHANGELOG.md for what changed"
   else

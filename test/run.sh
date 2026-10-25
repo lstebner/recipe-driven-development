@@ -38,6 +38,11 @@ out="$("$kit/install.sh" "$older")"
 out="$("$kit/install.sh" "$older" --update)"
 [[ "$out" == *"updating from a version before 0.1.0 to $version"* && "$(node "$older/scripts/spec-lint.mjs" --version)" == "$version" ]] \
   && pass "--update says which version it's updating from" || fail "--update version" "$out"
+sed -i 's/^const VERSION = .*/const VERSION = "9.9.9"/' "$older/scripts/spec-lint.mjs"
+out="$("$kit/install.sh" "$older" --update 2>&1)"; code=$?
+[[ $code -ne 0 && "$out" == *"9.9.9, which is newer than this kit"* && "$(node "$older/scripts/spec-lint.mjs" --version)" == "9.9.9" ]] \
+  && pass "--update refuses to downgrade" || fail "--update downgrade" "$out"
+out="$("$kit/install.sh" "$older" 2>&1)"; [[ $? -eq 0 && "$out" == *"newer than this kit"* ]] && pass "  ...and a plain install says the repo is newer" || fail "install newer" "$out"
 rm -rf "$older"
 [[ "$(grep -c spec-lint.mjs "$repo/.claude/settings.json")" == 3 && "$(grep -c rdd:start "$repo/CLAUDE.md")" == 1 ]] \
   && pass "install is idempotent" || fail "install is idempotent" "$out2"
@@ -272,6 +277,8 @@ apply="$(node -e '
 out="$(hook pre "$apply")"
 [[ "$out" == *'"ask"'* && "$out" == *"Accept amendment A1 (Show the year): Rules + "* && "$out" == *Rules* ]] && pass "pre: applying an amendment asks to accept it by name" || fail "pre: apply amendment" "$out"
 mv "$screen.bak" "$screen"
+out="$(hook pre "$(edit_json "$screen" $'## Goal\n' $'# Album detail\n\n## Goal\n')")"
+[[ "$out" == *'"ask"'* && "$out" == *"intro"* ]] && pass "pre: text before the first heading is protected" || fail "pre: intro" "$out"
 out="$(hook pre "$(edit_json "$screen" "status: approved" "status: implemented")")"
 [[ -z "$out" ]] && pass "pre: approved → implemented doesn't ask" || fail "pre: status progress" "$out"
 out="$(hook pre "$(edit_json "$screen" "uses: [ArtistBadge, PrimaryButton]" "uses: [ArtistBadge]")")"
@@ -332,6 +339,125 @@ mv "$screen.bak" "$screen"
 write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ❌ | regressed |"
 expect_err "verified with a failing report is a lint error" "marks AlbumDetail.R2 as ❌"
 write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
+
+echo "deprecation"
+api="$repo/specs/apis/GetAlbum.md"
+cp "$api" "$api.orig"
+sed 's/^api: GetAlbum$/api: GetAlbumV2/; s/GetAlbum\.R/GetAlbumV2.R/; s/^status: approved/status: draft/' "$api" > "$repo/specs/apis/GetAlbumV2.md"
+lint --fix >/dev/null
+deprecate_json() { # deprecate_json <file> <frontmatter that replaces "status: approved"> [decision]: a Write that deprecates, with a Decisions line
+  node -e '
+    const fs = require("fs"); const [file, fm, decision] = process.argv.slice(1); const t = fs.readFileSync(file, "utf8")
+    let after = t.replace("status: approved", fm)
+    if (decision) after = /^## Decisions$/m.test(after) ? after.replace(/^## Decisions\n/m, `## Decisions\n${decision}\n`) : `${after.trimEnd()}\n\n## Decisions\n${decision}\n`
+    console.log(JSON.stringify({ tool_name: "Write", tool_input: { file_path: file, content: after } }))' "$1" "$2" "${3:-}"
+}
+deprecate() { hook pre "$(deprecate_json "$api" "$1" "- 2026-10-24: Deprecated: GetAlbumV2 supersedes it.")"; }
+out="$(deprecate "status: deprecated")"
+[[ "$out" == *'"deny"'* && "$out" == *"must be the date it was deprecated"* ]] && pass "pre: deprecating without a date is refused" || fail "pre: no date" "$out"
+out="$(deprecate $'status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: Nope')"
+[[ "$out" == *'"deny"'* && "$out" == *"Nope, which has no spec"* ]] && pass "pre: deprecating in favour of a missing spec is refused" || fail "pre: bad replacement" "$out"
+out="$(deprecate $'status: deprecated\ndeprecated: 2026-02-30')"
+[[ "$out" == *'"deny"'* && "$out" == *'(got \"2026-02-30\")'* ]] && pass "pre: a date that doesn't exist is refused" || fail "pre: impossible date" "$out"
+out="$(deprecate $'status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: Album')"
+[[ "$out" == *'"deny"'* && "$out" == *"Album, which is a model spec; it must be another api spec"* ]] && pass "pre: a replacement of another kind is refused" || fail "pre: cross-kind replacement" "$out"
+out="$(hook pre "$(node -e '
+  const fs = require("fs"); const t = fs.readFileSync(process.argv[1], "utf8")
+  const after = t.replace("status: approved", "status: deprecated\ndeprecated: 2026-10-24").replace("- Checkout (flow)\n", "")
+  console.log(JSON.stringify({ tool_name: "Write", tool_input: { file_path: process.argv[1], content: after } }))' "$api")")"
+[[ "$out" == *'"deny"'* && "$out" == *"edit of its own"*"Used by"* ]] && pass "pre: deprecating can't also change Used by or Open amendments" || fail "pre: deprecate + Used by" "$out"
+out="$(hook pre "$(node -e '
+  const fs = require("fs"); const t = fs.readFileSync(process.argv[1], "utf8")
+  const after = t.replace("status: approved", "status: deprecated\ndeprecated: 2026-10-24").replace("returns not_found.", "returns 410.")
+  console.log(JSON.stringify({ tool_name: "Write", tool_input: { file_path: process.argv[1], content: after } }))' "$api")")"
+[[ "$out" == *'"deny"'* && "$out" == *"edit of its own"*"Rules"* ]] && pass "pre: deprecating alongside other changes is refused" || fail "pre: deprecate + change" "$out"
+out="$(hook pre "$(edit_json "$repo/specs/apis/GetAlbumV2.md" "status: draft" $'status: deprecated\ndeprecated: 2026-10-24')")"
+[[ "$out" == *'"deny"'* && "$out" == *"delete it instead"* ]] && pass "pre: a draft is deleted, not deprecated" || fail "pre: deprecate draft" "$out"
+out="$(deprecate $'status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: GetAlbumV2')"
+[[ "$out" == *'"deny"'* && "$out" == *"GetAlbumV2, which is still a draft"* ]] && pass "pre: a draft can't be the replacement" || fail "pre: draft replacement" "$out"
+sed -i 's/^status: draft$/status: approved/' "$repo/specs/apis/GetAlbumV2.md"
+out="$(hook pre "$(node -e '
+  const fs = require("fs"); const t = fs.readFileSync(process.argv[1], "utf8")
+  const after = t.replace("status: approved", "status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: GetAlbumV2").replace("## Purpose", "# A new title\n\n## Purpose")
+  console.log(JSON.stringify({ tool_name: "Write", tool_input: { file_path: process.argv[1], content: after } }))' "$api")")"
+[[ "$out" == *'"deny"'* && "$out" == *"edit of its own"*"intro"* ]] && pass "pre: deprecating can't also change the text before the first heading" || fail "pre: deprecate + intro" "$out"
+out="$(hook pre "$(deprecate_json "$api" $'status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: GetAlbumV2')")"
+[[ "$out" == *'"deny"'* && "$out" == *"add a dated line under ## Decisions"*"use a single Write of the whole file, or a MultiEdit"* ]] && pass "pre: deprecating without a dated Decisions line is refused" || fail "pre: no decision" "$out"
+out="$(deprecate $'status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: GetAlbumV2')"
+[[ "$out" == *'"ask"'* && "$out" == *"Deprecate GetAlbum (approved → deprecated), replaced by GetAlbumV2?"* ]] && pass "pre: deprecating asks, naming the replacement" || fail "pre: deprecate" "$out"
+sed -i 's/^status: approved$/status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: GetAlbumV2\nsource: [src\/gone.ts]/' "$api"
+expect_err "a deprecated spec drops out of Used by" '"Used by" is stale'
+lint --fix >/dev/null
+expect_warn "a reference to a deprecated spec warns, naming the replacement" "[[api:GetAlbum]] points at GetAlbum, which is deprecated on 2026-10-24; use GetAlbumV2 instead"
+expect_ok "  ...but deprecated specs aren't linted for content, sources or endpoints"
+! grep -q "GetAlbum (api)" "$repo/specs/models/Album.md" && grep -q "GetAlbumV2 (api)" "$repo/specs/models/Album.md" \
+  && pass "  ...and Used by lists only live specs" || fail "Used by without deprecated" "$(cat "$repo/specs/models/Album.md")"
+out="$(hook pre "$(edit_json "$api" $'## Rules\n' $'## Decisions\n- note\n\n## Rules\n')")"
+[[ "$out" == *'"deny"'* && "$out" == *"frozen"*"use GetAlbumV2 instead"* ]] && pass "pre: any edit to a deprecated spec is refused" || fail "pre: frozen" "$out"
+out="$(hook pre "$(edit_json "$api" "status: deprecated" "status: approved")")"
+[[ "$out" == *'"deny"'* ]] && pass "pre: Claude can't un-deprecate a spec" || fail "pre: undeprecate" "$out"
+echo $'## APIs\n- GetAlbum' > "$repo/specs/outline.md.dep"; cp "$repo/specs/outline.md" "$repo/specs/outline.md.keep"; mv "$repo/specs/outline.md.dep" "$repo/specs/outline.md"
+expect_err "a deprecated spec left in the outline is an error" "GetAlbum is deprecated on 2026-10-24; use GetAlbumV2 instead — take it off the outline"
+mv "$repo/specs/outline.md.keep" "$repo/specs/outline.md"
+mutate_in "$api" "deprecated needs a valid date" expect_err '"deprecated" must be the date' 's/^deprecated: .*/deprecated: last week/'
+v2="$repo/specs/apis/GetAlbumV2.md"
+cp "$v2" "$v2.bak"; sed -i 's/^status: draft$/status: approved/' "$v2"
+out="$(hook pre "$(deprecate_json "$v2" $'status: deprecated\ndeprecated: 2026-10-25' "- 2026-10-25: Deprecated: not needed.")")"
+[[ "$out" == *'"ask"'* && "$out" == *"Deprecated specs that name GetAlbumV2 as their replacement will keep pointing at it: GetAlbum."* ]] \
+  && pass "pre: deprecating a replacement names the specs that point at it" || fail "pre: deprecate a replacement" "$out"
+echo "export const x = 1" > "$repo/src/gone.ts"
+v3="$repo/specs/apis/GetAlbumV3.md"
+sed 's/GetAlbumV2/GetAlbumV3/g' "$v2" > "$v3"
+sed -i 's/^status: approved$/status: deprecated\ndeprecated: 2026-10-25\nreplaced_by: GetAlbumV3/' "$v2"
+out="$(lint --fix)"; code=$?
+[[ $code -eq 0 && "$out" == *"[[api:GetAlbum]] points at GetAlbum, which is deprecated on 2026-10-24; use GetAlbumV3 instead"* && "$out" != *"use GetAlbumV2"* && "$out" != *"chain"* ]] \
+  && pass "a chain of replacements is followed to its live end, without a warning" || fail "replacement chain" "$out"
+out="$(hook post "$(edit_json "$repo/src/gone.ts" x y)")"
+[[ "$out" == *"source of GetAlbum, which is deprecated on 2026-10-24; use GetAlbumV3 instead"* ]] && pass "  ...in the source reminder too" || fail "chain in post hook" "$out"
+out="$(lint --summary)"; [[ "$out" == *"Deprecated (frozen):"*"GetAlbum "*"2026-10-24  → GetAlbumV3"* ]] && pass "  ...and in the summary" || fail "chain in summary" "$out"
+rm "$v3"; sed -i '/^replaced_by: GetAlbumV3$/d' "$v2"
+out="$(lint --fix)"; code=$?
+[[ $code -eq 0 && "$out" == *"GetAlbum, which is deprecated on 2026-10-24; nothing live replaces it"* && "$out" != *"chain"* ]] \
+  && pass "a chain that ends with no replacement says nothing live replaces it" || fail "chain to nothing" "$out"
+sed -i 's/^deprecated: 2026-10-25$/deprecated: 2026-10-25\nreplaced_by: GetAlbum/' "$v2"
+out="$(lint --fix)"; code=$?
+[[ $code -eq 0 && "$out" == *"chain of replacements is broken: GetAlbum → GetAlbumV2 → GetAlbum goes round in a loop"* ]] \
+  && pass "a loop in the chain only warns" || fail "chain loop" "$out"
+rm "$v2"; out="$(lint --fix)"; code=$?
+[[ $code -eq 0 && "$out" == *"chain of replacements is broken: GetAlbumV2 has no spec"* ]] && pass "  ...and so does a replacement that's been deleted" || fail "replacement deleted later" "$out"
+mv "$v2.bak" "$v2"; lint --fix >/dev/null
+badge="$repo/specs/components/ArtistBadge.md"
+cp "$badge" "$badge.bak"; cp "$screen" "$screen.bak"
+sed -i 's/^status: .*/status: deprecated\ndeprecated: 2026-10-24/' "$badge"; sed -i 's/variant=compact/variant=tiny/' "$screen"
+expect_err "a deprecated component's variants are still checked" 'ArtistBadge has no variant "tiny"'
+sed -i 's/\[\[ArtistBadge variant=tiny\]\]/[[~ArtistBadge]]/; /^uses:/d; /^local:/d' "$screen"
+expect_err "a one-off can't take a deprecated component's name" "[[~ArtistBadge]] has the name of a shared component that's deprecated on 2026-10-24"
+expect_warn "a source importing a deprecated component is told it's deprecated, not to add it to uses" "source imports ArtistBadge, which is deprecated on 2026-10-24"
+mv "$badge.bak" "$badge"; mv "$screen.bak" "$screen"
+mutate_in "$repo/specs/apis/GetAlbumV2.md" "replaced_by only on a deprecated spec" expect_err '"replaced_by" belongs only on a deprecated spec' 's/^status: approved$/status: approved\nreplaced_by: GetAlbum/'
+mutate_in "$api" "a hand-deprecated spec can't be replaced by another kind" expect_err "replaced_by names Album, which is a model spec; it must be another api spec" 's/^replaced_by: GetAlbumV2$/replaced_by: Album/'
+mutate_in "$api" "a hand-deprecated spec can't replace itself" expect_err "it can't be replaced by itself" 's/^replaced_by: GetAlbumV2$/replaced_by: GetAlbum/'
+mutate_in "$api" "quoted deprecation values are read without their quotes" expect_ok "" 's/^deprecated: 2026-10-24$/deprecated: "2026-10-24"/; s/^replaced_by: GetAlbumV2$/replaced_by: "GetAlbumV2"/'
+out="$(node "$repo/scripts/spec-lint.mjs" --root "$repo" --new api GetAlbum 2>&1)"; code=$?
+[[ $code -eq 1 && "$out" == *"which is deprecated; a deprecated spec keeps its name for good"* ]] && pass "--new refuses a name a deprecated spec holds" || fail "--new deprecated name" "$out"
+cp "$repo/specs/outline.md" "$repo/specs/outline.md.keep"; echo $'## APIs\n- GetAlbum' > "$repo/specs/outline.md"
+out="$(node "$repo/scripts/spec-lint.mjs" --root "$repo" --scaffold 2>&1)"; code=$?
+[[ $code -eq 1 && "$out" == *"which is deprecated; a deprecated spec keeps its name for good"* ]] && pass "  ...and so does --scaffold" || fail "--scaffold deprecated name" "$out"
+mv "$repo/specs/outline.md.keep" "$repo/specs/outline.md"
+mutate_in "$repo/specs/apis/GetAlbumV2.md" "a hand-deprecated spec can't be replaced by a draft" expect_err "GetAlbumV2, which is still a draft" 's/^status: approved$/status: draft/'
+cp "$api" "$api.bak"; sed -i 's/^status: deprecated$/status: "deprecated"/' "$api"
+out="$(hook pre "$(edit_json "$api" $'## Rules\n' $'## Rules\n\n')")"
+[[ "$out" == *'"deny"'* && "$out" == *"frozen"* ]] && pass "a quoted status still freezes the spec" || fail "quoted status" "$out"
+mv "$api.bak" "$api"
+echo 'it("[GetAlbum.R1] unlisted is not_found", () => {})' > "$repo/src/GetAlbum.test.ts"
+out="$(lint --summary)"
+[[ "$out" == *"Deprecated (frozen):"*"GetAlbum "*"2026-10-24  → GetAlbumV2  ⚠ tests still tagged: GetAlbum.R1"* ]] && pass "summary lists deprecated specs and tests still tagged with their rules" || fail "summary deprecated" "$out"
+echo "export const x = 1" > "$repo/src/gone.ts"
+out="$(hook post "$(edit_json "$repo/src/gone.ts" x y)")"; code=$?
+[[ $code -eq 0 && "$out" == *additionalContext*"source of GetAlbum, which is deprecated on 2026-10-24; use GetAlbumV2 instead"* ]] && pass "post: editing a deprecated spec's source reminds Claude" || fail "post: deprecated source" "$out"
+rm "$repo/src/gone.ts" "$repo/src/GetAlbum.test.ts" "$repo/specs/apis/GetAlbumV2.md"
+mv "$api.orig" "$api"; lint --fix >/dev/null
+expect_ok "back to clean after deprecation tests"
 
 echo "shell hook"
 bash_asks() { local out; out="$(hook bash "$(bash_json "$2")")"; [[ "$out" == *'"ask"'* ]] && pass "$1" || fail "$1" "$out"; }

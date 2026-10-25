@@ -14,6 +14,7 @@ The specs are at different stages on purpose:
 | [`GetAlbum`](specs/apis/GetAlbum.md) | api | `approved` | an **open amendment**: Claude found the spec was missing something while building, and work on it is paused until you accept or reject |
 | [`CreateOrder`](specs/apis/CreateOrder.md) | api | `draft` | error codes that other specs point at |
 | [`BuyAlbum`](specs/flows/BuyAlbum.md) | flow | `draft` | steps with branches on API errors; still being written |
+| [`GetAlbumPrice`](specs/apis/GetAlbumPrice.md) | api | `deprecated` | off the menu: GetAlbum replaced it. The spec stays as a frozen record, with the date and the reason, and nothing points at it any more |
 
 Start with [`outline.md`](specs/outline.md), the one-line-per-spec list everything else grew from.
 

@@ -11,7 +11,8 @@ specific changes (and for a non-draft spec, those changes go in as amendments; s
 
 ## Steps
 
-1. Run `node scripts/spec-lint.mjs`. Lint errors are findings too; include them.
+1. Run `node scripts/spec-lint.mjs`. Lint errors are findings too; include them. If the spec is
+   `deprecated`, don't review it: it's frozen. Say so, and offer to review its `replaced_by` instead.
 2. Read `specs/README.md` (the format), the target spec, every spec it references (`uses`,
    `[[screen:…]]`, `[[flow:…]]`, `[[model:…]]`, `[[api:…]]`), `specs/tokens.md` for UI, and any
    other specs that reference the same components, models or APIs.
@@ -44,6 +45,7 @@ partial data, very long text or names, zero / one / many items, first-time use.
 - A shared component asked to do something structurally different here: should that be a new component, or a variant?
 - Something described inline in Layout that clearly exists elsewhere: should it be `[[Shared]]`?
 - Variants referenced that the component spec doesn't define.
+- References to a deprecated spec: propose pointing at its `replaced_by` instead.
 
 **Style**
 - Raw values instead of tokens; tokens that are missing from `tokens.md`.
