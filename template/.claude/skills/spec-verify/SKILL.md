@@ -1,6 +1,6 @@
 ---
 name: spec-verify
-description: Verify an implemented screen, component, flow, data model or API against its spec in specs/, rule by rule, write a pass/fail report to specs/_reports/<Name>.md, and hand it to the user to taste. Checks lint, imports, copy, rule-tagged tests, schema and contract, and visual layout via screenshots. Use when asked to "verify against the spec", "/spec-verify AlbumDetail", or at the end of implementing a spec.
+description: Verify an implemented screen, component, flow, data model, API or policy against its spec in specs/, rule by rule, write a pass/fail report to specs/_reports/<Name>.md, and hand it to the user to taste. Checks lint, imports, copy, rule-tagged tests, schema and contract, and visual layout via screenshots. Use when asked to "verify against the spec", "/spec-verify AlbumDetail", or at the end of implementing a spec.
 ---
 
 # Spec verify
@@ -41,6 +41,9 @@ Offer to verify its `replaced_by` instead.
    - **api:** the route matches `endpoint`; request and response shapes match (including the
      referenced models); every row in Errors is produced with that status and code; Auth is enforced.
    - **flow:** each step's screen or API exists and links to the next as written, including every branch.
+   - **policy:** the decision is made in one place, and every spec in Used by gets its answer
+     from there rather than working it out again or adjusting it (filtering, reordering, adding
+     cases). A second copy of the logic is a ❌, even if it currently gives the same answer.
 4. **Tests:** find tests tagged `[<RuleID>]` (`grep -rn "\[AlbumDetail.R"`), run them, and record
    pass or fail. If a rule has no tagged test, say so. Offer to write one, but don't block the report on it.
 5. **Run it:**
@@ -50,8 +53,13 @@ Offer to verify its `replaced_by` instead.
      by node and in order. For a flow, walk every path through Steps, branches included.
    - **api:** call it for the happy path and for each error code; record request and response.
    - **model:** exercise each Rule (invariant) against the real storage layer if you can.
+   - **policy:** run the decision for each Examples row and each rule, and record what you
+     gave it and what came back. Then check that each spec in Used by shows the same answer for
+     the same input (e.g. both navs, side by side, for each kind of visitor).
 6. Get the fingerprint with `node scripts/spec-lint.mjs --hash <Name>`, then write
-   `specs/_reports/<Name>.md` (overwrite it) and show the user the summary table.
+   `specs/_reports/<Name>.md` (overwrite it) and show the user the summary table. The fingerprint
+   covers the policies the spec references, so a verified spec whose policy has changed since its
+   report goes stale: re-verify it against the policy as it is now.
 7. **Status.** If the spec was `approved`, you may set `implemented` once it's built. If every
    rule is ✅ or 👤, no row is ❌ or ⚠️ and lint is clean, propose the taste test:
    - Tell the user in 2–5 bullets **what to try** to taste it themselves: every 👤 row first,

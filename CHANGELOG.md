@@ -14,6 +14,13 @@ bumps `VERSION` in `template/scripts/spec-lint.mjs` to match.
 
 ## Unreleased
 
+- New spec kind: **policy**, in `specs/policies/`, for a business decision that several specs
+  depend on but can't share as a component (which links a visitor sees, whether a listener can
+  buy an album). Specs reference it as `[[policy:Name]]`, its Used by lists them, and a spec's
+  fingerprint includes the policies it references, so changing a policy makes the reports of
+  verified specs that rely on it stale. Specs that don't reference a policy keep their
+  fingerprint. Outlines take a `## Policies` heading, and `--new policy` uses the new template.
+
 - Specs can be deprecated: `status: deprecated` with a `deprecated:` date and an optional
   `replaced_by:` (a live spec of the same kind, past draft). A deprecated spec is frozen, drops
   out of Used by, is skipped by the content checks, and is listed in `--summary` with any tests

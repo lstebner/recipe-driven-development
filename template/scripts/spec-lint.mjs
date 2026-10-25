@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Recipe-Driven Development: validates specs/ against the format defined in specs/README.md.
 //   (no flag)      lint everything; exit 1 on errors
-//   --fix          regenerate the "Used by" section of component, model and API specs, then lint
+//   --fix          regenerate the "Used by" section of component, model, API and policy specs, then lint
 //   --summary      status dashboard: specs, rules, tagged tests, open amendments, shared vs one-off
 //   --hash <Name>  print the fingerprint of a spec's protected content (goes in its /spec-verify report)
 //   --new <kind> <Name>  create a draft spec from specs/_templates/<kind>.md
@@ -35,6 +35,7 @@ const KINDS = {
   flow: { dir: "flows", required: ["Goal", "Steps", "Rules"] },
   model: { dir: "models", required: ["Purpose", "Fields"], usedBy: true },
   api: { dir: "apis", required: ["Purpose", "Rules"], usedBy: true },
+  policy: { dir: "policies", required: ["Purpose", "Rules"], usedBy: true },
 }
 const STATUSES = ["draft", "approved", "implemented", "verified", "deprecated"]
 // Claude may move a spec between these on evidence; anything else (e.g. → approved) is the user's call.
@@ -130,9 +131,9 @@ const loadAll = () => {
 }
 
 // specs/outline.md: a quick list of everything planned, under ## Screens, ## Components, ## Flows,
-// ## Models and ## APIs. Each top-level bullet is "- Name" or "- Name: a line about it".
+// ## Models, ## APIs and ## Policies. Each top-level bullet is "- Name" or "- Name: a line about it".
 const outlineFile = path.join(specsDir, "outline.md")
-const OUTLINE_HEADINGS = "## Screens, ## Components, ## Flows, ## Models or ## APIs"
+const OUTLINE_HEADINGS = "## Screens, ## Components, ## Flows, ## Models, ## APIs or ## Policies"
 const parseOutline = () => {
   if (!existsSync(outlineFile)) return null
   const entries = []
@@ -145,8 +146,10 @@ const parseOutline = () => {
     else sections.at(-1)?.lines.push({ n: index + 1, text })
   })
   for (const section of sections) {
-    const kind = section.name.toLowerCase().replace(/s$/, "")
-    if (!KINDS[kind]) {
+    // A heading is the kind's folder name ("Policies") or the kind itself ("Policy").
+    const heading = section.name.toLowerCase()
+    const kind = Object.keys(KINDS).find((k) => k === heading || KINDS[k].dir === heading)
+    if (!kind) {
       problems.push({ n: section.line, message: `unknown section "## ${section.name}" (expected ${OUTLINE_HEADINGS})` })
       continue
     }
@@ -180,9 +183,9 @@ const refsOf = (spec) =>
     variant: /variant=([^\s\]]+)/.exec(match[3] ?? "")?.[1],
   }))
 
-// [[screen:Name]], [[flow:Name]], [[model:Name]], [[model:Name#field]], [[api:Name]], [[api:Name#error_code]]
+// [[screen:Name]], [[flow:Name]], [[model:Name]], [[model:Name#field]], [[api:Name]], [[api:Name#error_code]], [[policy:Name]]
 const typedRefsOf = (spec) =>
-  scan(spec, protectedSections(spec), /\[\[(screen|flow|model|api):([A-Za-z]\w*)(?:#([\w.-]+))?\]\]/g).map(({ n, match }) => ({
+  scan(spec, protectedSections(spec), /\[\[(screen|flow|model|api|policy):([A-Za-z]\w*)(?:#([\w.-]+))?\]\]/g).map(({ n, match }) => ({
     n,
     kind: match[1],
     name: match[2],
@@ -300,11 +303,19 @@ const protectedParts = (text, texts = sectionTexts(text)) => {
   return parts
 }
 
+// The policies a spec relies on, by name.
+const policiesOf = (text) => [...new Set(typedRefsOf(parseSpec(text, "", null)).filter((r) => r.kind === "policy").map((r) => r.name))].sort()
+
 // Fingerprint of what a spec asks for. Status and source are progress, not intent, so they're left out:
-// marking a spec verified doesn't make its report stale, but changing a rule does.
-const specHash = (text) => {
+// marking a spec verified doesn't make its report stale, but changing a rule does. The policies it relies on
+// are part of what it asks for, so changing one of their rules makes its report stale too.
+const specHash = (text, seen = new Set()) => {
   const { status, source, ...intent } = parseFrontmatter(normalize(text)).data ?? {}
   const parts = { ...protectedParts(text), frontmatter: JSON.stringify(intent) }
+  for (const name of policiesOf(text)) {
+    const file = path.join(specsDir, KINDS.policy.dir, `${name}.md`)
+    if (!seen.has(name) && existsSync(file)) parts[`[[policy:${name}]]`] = specHash(readFileSync(file, "utf8"), new Set([...seen, name]))
+  }
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 12)
 }
 
@@ -318,7 +329,11 @@ const checkReport = (spec) => {
   const hash = specHash(spec.raw)
   const stamp = lines.map((l) => /\bSpec:\s*`?([0-9a-f]{12})\b/.exec(l)?.[1]).find(Boolean)
   if (!stamp) problems.push(`${rel(file)} has no "Spec: <hash>" line`)
-  else if (stamp !== hash) problems.push(`${rel(file)} was written for an older version of the spec (Spec: ${stamp}, now ${hash}); set status: implemented and re-run /spec-verify ${spec.name}`)
+  else if (stamp !== hash) {
+    const policies = policiesOf(spec.raw)
+    const what = policies.length ? `the spec or a policy it relies on (${policies.join(", ")})` : "the spec"
+    problems.push(`${rel(file)} was written for an older version of ${what} (Spec: ${stamp}, now ${hash}); set status: implemented and re-run /spec-verify ${spec.name}`)
+  }
   const rows = lines.filter((l) => isTableRow(l) && !isSeparator(l)).map(cellsOf)
   for (const row of rows) if (/❌|⚠/.test(row[1] ?? "")) problems.push(`${rel(file)} marks ${row[0]} as ${row[1]}`)
   const rules = rulesOf(spec).filter((r) => r.id)
@@ -441,7 +456,7 @@ const lint = ({ all, live, tokens, outline }) => {
     for (const name of uses) addUser(name, spec)
     for (const name of local) localOwners.set(name, [...(localOwners.get(name) ?? []), spec])
 
-    // Typed refs to screens, flows, models and APIs.
+    // Typed refs to screens, flows, models, APIs and policies.
     for (const ref of typedRefsOf(spec)) {
       const label = `[[${ref.kind}:${ref.name}${ref.member ? `#${ref.member}` : ""}]]`
       const target = byName.get(ref.name)
@@ -459,8 +474,8 @@ const lint = ({ all, live, tokens, outline }) => {
       }
     }
 
-    // Table keys must be unique: model fields, API error codes, copy keys.
-    for (const section of ["fields", "errors", "copy"]) {
+    // Table keys must be unique: model fields, API error codes, policy inputs, copy keys.
+    for (const section of ["fields", "errors", "inputs", "copy"]) {
       const keys = new Set()
       for (const row of tableKeys(spec.sections[section])) {
         if (keys.has(row.key)) report("error", spec, row.n, `duplicate key "${row.key}" in ${spec.sections[section].name}`)
@@ -603,8 +618,8 @@ const summary = (specs) => {
   const out = [line(table[0]), widths.map((w) => "-".repeat(w)).join("  "), ...rows.map(line), ""]
   const usedBy = (kind) => live.filter((s) => s.kind === kind).map((s) => `  ${s.name.padEnd(widths[0])}  ← ${(usersOf.get(s.name) ?? []).map((u) => u.name).join(", ") || "(unused)"}`)
   out.push("Shared components:", ...usedBy("component"))
-  const contracts = [...usedBy("model"), ...usedBy("api")]
-  if (contracts.length) out.push("", "Models & APIs:", ...contracts)
+  const contracts = [...usedBy("model"), ...usedBy("api"), ...usedBy("policy")]
+  if (contracts.length) out.push("", "Models, APIs & policies:", ...contracts)
   out.push("", "One-offs (deliberately not shared):")
   if (localOwners.size === 0) out.push("  (none)")
   for (const [name, owners] of localOwners) out.push(`  ~${name.padEnd(widths[0] - 1)}  in ${owners.map((s) => s.name).join(", ")}${owners.length > 1 ? "  ⚠ in more than one spec" : ""}`)
@@ -622,7 +637,7 @@ const summary = (specs) => {
 
 // ---------- scaffolding ----------
 
-const PLACEHOLDERS = { screen: "ScreenName", component: "ComponentName", flow: "FlowName", model: "ModelName", api: "ApiName" }
+const PLACEHOLDERS = { screen: "ScreenName", component: "ComponentName", flow: "FlowName", model: "ModelName", api: "ApiName", policy: "PolicyName" }
 const HTTP_ENDPOINT = /^((?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+)\s*(?:(?:—|–|-|:)\s*)?(.*)$/i
 
 // Create a draft spec from its template. `note` is the user's own one-liner from the outline: it becomes
@@ -785,6 +800,12 @@ const hookPre = () => {
     const progressOnly = JSON.stringify(rest1) === JSON.stringify(rest2) && (s1 === s2 || (CLAUDE_STATUSES.includes(s1) && CLAUDE_STATUSES.includes(s2) && s2 !== "approved"))
     if (progressOnly) return
   }
+  // A policy is shared, so say which specs a change reaches: verified ones will need re-verifying.
+  const relying = kind === "policy" ? loadAll().live.filter((s) => s.name !== name && policiesOf(s.raw).includes(name)) : []
+  const verified = relying.filter((s) => s.fm.status === "verified").map((s) => s.name)
+  const reach = relying.length
+    ? ` ${relying.map((s) => s.name).join(", ")} rely on ${name}${verified.length ? `; ${verified.join(", ")} will need re-verifying` : ""}.`
+    : ""
   // Applying an amendment removes it from Open amendments; this prompt is where the user accepts it.
   const stillOpen = new Set(openAmendments(after).map((a) => a.id))
   const applied = openAmendments(before).filter((a) => !stillOpen.has(a.id))
@@ -792,12 +813,12 @@ const hookPre = () => {
     return decide(
       "ask",
       `Accept ${applied.map((a) => `amendment ${a.id} (${a.title})${a.change ? `: ${a.change}` : ""}`).join("; ")}? ` +
-        `This changes ${rel(file)}, touching: ${changed.join(", ")}. Approve to accept; deny to leave it open, and tell Claude if you'd rather reject it.`,
+        `This changes ${rel(file)}, touching: ${changed.join(", ")}.${reach} Approve to accept; deny to leave it open, and tell Claude if you'd rather reject it.`,
     )
   }
   decide(
     "ask",
-    `Spec change in ${rel(file)} (status: ${from} → ${to}), touching: ${changed.join(", ")}. ` +
+    `Spec change in ${rel(file)} (status: ${from} → ${to}), touching: ${changed.join(", ")}.${reach} ` +
       `Approve only if you agreed to this exact change; otherwise deny and ask Claude to propose it under "## Open amendments".`,
   )
 }

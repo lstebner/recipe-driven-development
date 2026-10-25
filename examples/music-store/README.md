@@ -13,6 +13,7 @@ The specs are at different stages on purpose:
 | [`PrimaryButton`](specs/components/PrimaryButton.md) | component | `approved` | variants and states, plus a generated Used by |
 | [`GetAlbum`](specs/apis/GetAlbum.md) | api | `approved` | an **open amendment**: Claude found the spec was missing something while building, and work on it is paused until you accept or reject |
 | [`CreateOrder`](specs/apis/CreateOrder.md) | api | `draft` | error codes that other specs point at |
+| [`CanBuyAlbum`](specs/policies/CanBuyAlbum.md) | policy | `approved` | one decision the screen, GetAlbum and CreateOrder all rely on, so the buy button, `owned` and `already_owned` can't drift apart |
 | [`BuyAlbum`](specs/flows/BuyAlbum.md) | flow | `draft` | steps with branches on API errors; still being written |
 | [`GetAlbumPrice`](specs/apis/GetAlbumPrice.md) | api | `deprecated` | off the menu: GetAlbum replaced it. The spec stays as a frozen record, with the date and the reason, and nothing points at it any more |
 

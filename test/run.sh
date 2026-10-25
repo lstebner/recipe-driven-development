@@ -240,7 +240,7 @@ expect_err "new Used by is stale until --fix" "specs/models/Album.md:"
 out="$(lint --fix)" && pass "flow, model and api lint clean after --fix" || fail "new kinds --fix" "$out"
 grep -q "^- GetAlbum (api)$" "$repo/specs/models/Album.md" && grep -q "^- Checkout (flow)$" "$repo/specs/apis/GetAlbum.md" \
   && pass "Used by lists who references models and APIs" || fail "Used by for models/apis" "$(cat "$repo/specs/models/Album.md" "$repo/specs/apis/GetAlbum.md")"
-out="$(lint --summary)"; [[ "$out" == *"Models & APIs"*"Album"*"← Checkout, GetAlbum"* ]] && pass "summary lists model and API users" || fail "summary models" "$out"
+out="$(lint --summary)"; [[ "$out" == *"Models, APIs & policies"*"Album"*"← Checkout, GetAlbum"* ]] && pass "summary lists model and API users" || fail "summary models" "$out"
 flow="$repo/specs/flows/Checkout.md"
 mutate_in() { # mutate_in <file> <name> <expect_err|expect_warn> <substring> <sed expr>
   cp "$1" "$1.bak"; sed -i "$5" "$1"; "$3" "$2" "$4"; mv "$1.bak" "$1"
@@ -260,6 +260,69 @@ rm "$repo/specs/apis/GetAlbum2.md"
 cp "$repo/specs/models/Album.md" "$repo/specs/apis/Album.md"; sed -i 's/^model: Album$/api: Album\nendpoint: GET \/x/' "$repo/specs/apis/Album.md"
 expect_err "names are unique across kinds" "the name Album is already taken"
 rm "$repo/specs/apis/Album.md"; lint --fix >/dev/null
+
+echo "policies"
+policy="$repo/specs/policies/NavLinks.md"
+mkdir -p "$repo/specs/policies"
+cat > "$policy" <<'EOF'
+---
+policy: NavLinks
+status: approved
+---
+## Purpose
+Which navigation links a visitor sees.
+
+## Inputs
+| input | type | notes |
+|---|---|---|
+| user | [[model:Album]] | absent when signed out |
+| region | string | |
+
+## Output
+An ordered list of links.
+
+## Rules
+- NavLinks.R1: Signed-out visitors see Home and Sign in.
+EOF
+for c in MobileNav DesktopNav; do
+  cat > "$repo/specs/components/$c.md" <<EOF
+---
+component: $c
+status: approved
+---
+## Purpose
+The $c.
+
+## Layout
+- One row per link from [[policy:NavLinks]]  → R1
+
+## Rules
+- R1: Shows exactly the links [[policy:NavLinks]] gives, in its order.
+EOF
+done
+expect_err "a new policy's Used by is stale until --fix" "specs/policies/NavLinks.md:"
+out="$(lint --fix)" && pass "policies lint clean after --fix" || fail "policy --fix" "$out"
+grep -q "^- DesktopNav (component)$" "$policy" && grep -q "^- MobileNav (component)$" "$policy" \
+  && pass "Used by lists every spec that relies on a policy" || fail "policy Used by" "$(cat "$policy")"
+out="$(lint --summary)"; [[ "$out" == *"NavLinks"*"← DesktopNav, MobileNav"* ]] && pass "summary lists policy users" || fail "summary policies" "$out"
+mutate_in "$repo/specs/components/MobileNav.md" "policy: unknown policy ref" expect_err "[[policy:Nope]] has no spec — create specs/policies/Nope.md" 's/policy:NavLinks\]\]  →/policy:Nope]]  →/'
+mutate_in "$repo/specs/components/MobileNav.md" "policy: no members" expect_err "only models (#field) and APIs (#error_code) have members" 's/policy:NavLinks\]\]  →/policy:NavLinks#admin]]  →/'
+mutate_in "$policy" "policy: duplicate input" expect_err 'duplicate key "user" in Inputs' 's/^| region |/| user |/'
+mutate_in "$policy" "policy: Rules required" expect_err 'missing required section "## Rules"' 's/^## Rules/## Notes/'
+nav="$repo/specs/components/MobileNav.md"
+navhash="$(lint --hash MobileNav)"
+cp "$policy" "$policy.bak"; sed -i 's/see Home and Sign in./see Home only./' "$policy"
+[[ "$(lint --hash MobileNav)" != "$navhash" ]] && pass "a spec's fingerprint covers the policies it references" || fail "policy in fingerprint" "$navhash"
+mv "$policy.bak" "$policy"
+[[ "$(lint --hash MobileNav)" == "$navhash" ]] && pass "  ...and only their content" || fail "policy fingerprint stable" "$(lint --hash MobileNav)"
+printf '# MobileNav: verification report\nSpec: %s\n\n| rule | result | evidence |\n|---|---|---|\n| MobileNav.R1 | ✅ | test |\n' "$navhash" > "$repo/specs/_reports/MobileNav.md"
+sed -i 's/^status: approved/status: verified/' "$nav"
+expect_ok "a verified spec that relies on a policy lints clean"
+mutate_in "$policy" "changing a policy makes a verified spec that relies on it stale" expect_err "older version of the spec or a policy it relies on (NavLinks)" 's/see Home and Sign in./see Home only./'
+out="$(hook pre "$(edit_json "$policy" "see Home and Sign in." "see Home only.")")"
+[[ "$out" == *'"permissionDecision":"ask"'* && "$out" == *"Rules"* && "$out" == *"DesktopNav, MobileNav rely on NavLinks; MobileNav will need re-verifying."* ]] \
+  && pass "pre: changing a policy asks, naming the specs that rely on it" || fail "pre: policy Rules" "$out"
+rm "$policy" "$nav" "$repo/specs/components/DesktopNav.md" "$repo/specs/_reports/MobileNav.md"; lint --fix >/dev/null
 
 echo "hooks"
 out="$(hook pre "$(edit_json "$screen" "Buy is hidden when owned." "Buy is always shown.")")"
@@ -503,21 +566,25 @@ cat > "$repo/specs/outline.md" <<'EOF'
 - Artist
 ## APIs
 - GetArtist: GET /artists/{id} — fetch one artist
+## Policies
+- CanFollow: whether a listener can follow an artist
 ## Screens
 - NowPlaying
 EOF
 scaffold() { node "$repo/scripts/spec-lint.mjs" --root "$repo" --scaffold 2>&1; }
 out="$(scaffold)"; code=$?
-[[ $code -eq 0 && "$out" == *"6 spec(s) created, 2 already existed"* ]] && pass "--scaffold creates a draft per new entry" || fail "--scaffold" "$out"
+[[ $code -eq 0 && "$out" == *"7 spec(s) created, 2 already existed"* ]] && pass "--scaffold creates a draft per new entry" || fail "--scaffold" "$out"
 grep -q "^let a listener browse everything by one artist$" "$repo/specs/screens/ArtistPage.md" && ! grep -q "follow" "$repo/specs/screens/ArtistPage.md" \
   && pass "  ...the entry's note becomes the Goal; nested notes stay in the outline" || fail "scaffold note" "$(cat "$repo/specs/screens/ArtistPage.md")"
 [[ -f "$repo/specs/screens/NowPlaying.md" ]] && pass "  ...including entries under a repeated heading" || fail "repeated heading" "$out"
 grep -q "^endpoint: GET /artists/{id}$" "$repo/specs/apis/GetArtist.md" && grep -q "^fetch one artist$" "$repo/specs/apis/GetArtist.md" \
   && pass "  ...an API's leading endpoint fills in endpoint" || fail "scaffold endpoint" "$(cat "$repo/specs/apis/GetArtist.md")"
+grep -q "^policy: CanFollow$" "$repo/specs/policies/CanFollow.md" && grep -q "^whether a listener can follow an artist$" "$repo/specs/policies/CanFollow.md" \
+  && pass "  ...a ## Policies entry becomes a policy draft" || fail "scaffold policy" "$(cat "$repo/specs/policies/CanFollow.md" 2>&1)"
 grep -q "^The ArtistBadge.$" "$repo/specs/components/ArtistBadge.md" && ! grep -q "^## Props" "$repo/specs/components/ArtistBadge.md" \
   && pass "  ...and existing specs are left alone" || fail "scaffold existing" "$(cat "$repo/specs/components/ArtistBadge.md")"
 expect_ok "scaffolded drafts lint clean"
-out="$(scaffold)"; [[ "$out" == *"0 spec(s) created, 8 already existed"* ]] && pass "--scaffold is idempotent" || fail "--scaffold idempotent" "$out"
+out="$(scaffold)"; [[ "$out" == *"0 spec(s) created, 9 already existed"* ]] && pass "--scaffold is idempotent" || fail "--scaffold idempotent" "$out"
 echo "- Settings" >> "$repo/specs/outline.md"
 expect_warn "an outline entry without a spec warns" "Settings has no spec yet"
 outline="$repo/specs/outline.md"
@@ -526,7 +593,7 @@ mutate_in "$outline" "outline entry that isn't a name"      expect_err "isn't a 
 mutate_in "$outline" "outline section that isn't a kind"    expect_err 'unknown section "## Widgets"'     's/^## Flows$/## Widgets/'
 mutate_in "$outline" "outline entry listed twice"           expect_err "TrackRow is listed more than once" 's/^- Onboarding$/- TrackRow/'
 bash_quiet "--scaffold is quiet to the shell hook" "node scripts/spec-lint.mjs --scaffold"
-rm "$repo"/specs/screens/ArtistPage.md "$repo"/specs/components/TrackRow.md "$repo"/specs/flows/Onboarding.md "$repo"/specs/models/Artist.md "$repo"/specs/apis/GetArtist.md "$repo"/specs/screens/NowPlaying.md
+rm "$repo"/specs/screens/ArtistPage.md "$repo"/specs/components/TrackRow.md "$repo"/specs/flows/Onboarding.md "$repo"/specs/models/Artist.md "$repo"/specs/apis/GetArtist.md "$repo"/specs/screens/NowPlaying.md "$repo"/specs/policies/CanFollow.md
 mv "$repo/specs/outline.md.orig" "$repo/specs/outline.md"
 
 echo "post hook"

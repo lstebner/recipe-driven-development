@@ -12,7 +12,7 @@ Let a listener see an album's details and release history, and buy it.
   - Details
     - [[~ReleaseTimeline]]                     → R2
     - Price ($type.heading)
-    - ?!owned [[PrimaryButton]] {copy.buy}     → R1, R3
+    - ?buy [[PrimaryButton]] {copy.buy}        → R1, R3
     - ?owned {copy.owned}                      → R1
 
 ## States
@@ -20,7 +20,7 @@ Let a listener see an album's details and release history, and buy it.
 - not-found: when [[api:GetAlbum#not_found]], show {copy.notFound}
 
 ## Rules
-- R1: The buy button is hidden when the listener already owns the album; show {copy.owned} instead.
+- R1: The buy button shows only when [[policy:CanBuyAlbum]] gives `buy`, and {copy.owned} only when it gives `owned`.
 - R2: The release timeline shows the newest release first.
 - R3: While a purchase is in flight, the buy button shows its loading state and can't be pressed again.
 
@@ -42,3 +42,4 @@ Let a listener see an album's details and release history, and buy it.
 ## Decisions
 - 2026-10-21: Accepted A1 (buy button needs a loading state): double-taps created two orders in testing. Added R3 and PrimaryButton's `loading` state.
 - 2026-10-21: Rejected A2 (make ReleaseTimeline shared): only AlbumDetail needs it; revisit if a second screen does.
+- 2026-10-24: R1 now follows CanBuyAlbum instead of deciding ownership itself, so the buy button can't disagree with CreateOrder.

@@ -1,6 +1,6 @@
 ---
 name: spec-review
-description: Critique a screen, component, flow, data model or API spec in specs/ before it is built. Finds ambiguity, untestable rules, missing states and branches, copy gaps, contract gaps, conflicts with shared components and models, and shared-vs-one-off problems, and proposes concrete wording for each. Use when asked to "review this spec", "/spec-review AlbumDetail", or before implementing a draft spec.
+description: Critique a screen, component, flow, data model, API or policy spec in specs/ before it is built. Finds ambiguity, untestable rules, missing states and branches, copy gaps, contract gaps, conflicts with shared components and models, and shared-vs-one-off problems, and proposes concrete wording for each. Use when asked to "review this spec", "/spec-review AlbumDetail", or before implementing a draft spec.
 ---
 
 # Spec review
@@ -14,8 +14,8 @@ specific changes (and for a non-draft spec, those changes go in as amendments; s
 1. Run `node scripts/spec-lint.mjs`. Lint errors are findings too; include them. If the spec is
    `deprecated`, don't review it: it's frozen. Say so, and offer to review its `replaced_by` instead.
 2. Read `specs/README.md` (the format), the target spec, every spec it references (`uses`,
-   `[[screen:…]]`, `[[flow:…]]`, `[[model:…]]`, `[[api:…]]`), `specs/tokens.md` for UI, and any
-   other specs that reference the same components, models or APIs.
+   `[[screen:…]]`, `[[flow:…]]`, `[[model:…]]`, `[[api:…]]`, `[[policy:…]]`), `specs/tokens.md` for UI, and any
+   other specs that reference the same components, models, APIs or policies.
 3. Go through the checklist below. For each problem, write the **exact text** you'd add or change.
    A finding with no proposed wording isn't useful.
 
@@ -67,6 +67,15 @@ partial data, very long text or names, zero / one / many items, first-time use.
 - Auth says who can call it and what error everyone else gets.
 - Side effects, idempotency, ordering and pagination are stated where they apply.
 - Every screen that calls it handles each of its error codes in States.
+
+**Policies**
+- The rules decide every combination of inputs: no case where two rules disagree or none applies.
+  An Examples row for each tricky case (boundaries, missing inputs, overlapping roles) makes gaps easy to spot.
+- Inputs are only what the decision needs. An input that's really about presentation (screen
+  size, platform) usually means part of it belongs in the specs that use it instead.
+- Every spec in Used by takes the answer as given. Flag any that restate, filter or reorder it.
+- Two or more specs that work out the same decision themselves (the same conditions in their
+  Rules or `?condition`s): propose pulling it into a policy.
 
 ## Output
 

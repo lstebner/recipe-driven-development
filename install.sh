@@ -41,10 +41,10 @@ if [[ -f "$target/scripts/spec-lint.mjs" ]]; then
     echo "  this repo has ${installed:-a version before 0.1.0}; run with --update to refresh spec-lint.mjs, the skills and the CLAUDE.md rules"
   fi
 fi
-for f in README.md tokens.md outline.md _templates/{screen,component,flow,model,api}.md; do
+for f in README.md tokens.md outline.md _templates/{screen,component,flow,model,api,policy}.md; do
   copy "$tpl/specs/$f" "$target/specs/$f"
 done
-mkdir -p "$target"/specs/{screens,components,flows,models,apis,_reports}
+mkdir -p "$target"/specs/{screens,components,flows,models,apis,policies,_reports}
 copy "$tpl/scripts/spec-lint.mjs" "$target/scripts/spec-lint.mjs" yes
 for s in spec-new spec-review spec-verify; do
   copy "$tpl/.claude/skills/$s/SKILL.md" "$target/.claude/skills/$s/SKILL.md" yes
