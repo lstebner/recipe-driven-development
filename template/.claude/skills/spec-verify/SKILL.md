@@ -26,6 +26,9 @@ they don't need to read the code.
 
 ## Steps
 
+If the spec is `deprecated`, stop: there's nothing to verify, and its report stays as it was.
+Offer to verify its `replaced_by` instead.
+
 1. `node scripts/spec-lint.mjs`: any errors go at the top of the report.
 2. Read the spec, every spec it references, and `specs/tokens.md` (for UI).
 3. **Static checks** against the `source` files:

@@ -14,6 +14,12 @@ bumps `VERSION` in `template/scripts/spec-lint.mjs` to match.
 
 ## Unreleased
 
+- Specs can be deprecated: `status: deprecated` with a `deprecated:` date and an optional
+  `replaced_by:`. A deprecated spec is frozen, drops out of Used by, is skipped by the content
+  checks, and is listed in `--summary` with any tests still tagged with its rules. **Breaking**
+  (narrowly): `deprecated` and `replaced_by` are now reserved frontmatter keys, so a live spec
+  that already uses either one fails lint. Rename the key.
+
 ## 0.1.0 (2026-10-25)
 
 The first versioned release: everything up to this point.

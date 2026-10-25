@@ -29,6 +29,17 @@ read it before writing or changing a spec.
   after `/spec-verify` writes a report with every rule ✅ or 👤; the hook refuses it otherwise, and
   asks the user to confirm (the taste test) when the report passes. Before setting it, tell the
   user in 2–5 bullets what to try, including every 👤 row.
+- **Deprecated specs** (`status: deprecated`) are frozen records of something that's off the menu.
+  Never edit one, never build new work against it, and don't extend code that only exists for it.
+  Use its `replaced_by` spec instead; if it has none, the behaviour is meant to go away, so ask
+  before relying on it. Code and tests may still reference it: when you're working in that code,
+  move it to the replacement (or point it out) rather than following the old spec. A live spec
+  that still points at it needs an amendment.
+- **Deprecating** is the user's decision, like approving. When they ask, set `status: deprecated`,
+  `deprecated: <today's date, YYYY-MM-DD>` and `replaced_by: <Name>` if something replaces it, and
+  add a dated line under `## Decisions` saying why, all in one edit and changing nothing else; the
+  hook asks them to confirm. Then remove it from `specs/outline.md`. A draft isn't deprecated:
+  delete it (and its outline entry) instead. You may suggest deprecating, but never do it unasked.
 - **Shared vs one-off:** before creating a component, check `specs/components/`. Reuse a shared
   component (adding a variant if only props or appearance differ) rather than forking it. A new
   one-off must appear as `[[~Name]]` in the spec, which for an approved spec means an amendment.

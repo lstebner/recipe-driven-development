@@ -65,6 +65,10 @@ line, and you and Claude can each do what you do best.
 7. **Taste.** Claude tells you what to try, then asks you to confirm. Yes: `verified`. No: say
    what's off and it goes back on the stove.
 
+When a recipe comes off the menu, say "deprecate BuyButton, PrimaryButton replaces it". The spec
+stays as a frozen record with the date and the reason, so Claude knows not to build on it even
+while old code still references it, and it points Claude at the replacement.
+
 See [`examples/music-store`](examples/music-store) for a small set of specs partway through a
 project: one verified, a few approved (one with an open amendment), and a couple of drafts.
 
@@ -92,7 +96,7 @@ What gets installed into the repo:
 
 | path | what it is |
 |---|---|
-| `specs/README.md` | the spec format: lifecycle, tasting, each kind of spec, references, layout grammar, rules, amendments |
+| `specs/README.md` | the spec format: lifecycle, tasting, deprecating, each kind of spec, references, layout grammar, rules, amendments |
 | `specs/outline.md` | a quick list of every screen, component, flow, model and API you know you'll need; `--scaffold` turns it into draft specs |
 | `specs/_templates/` | `screen.md`, `component.md`, `flow.md`, `model.md`, `api.md` |
 | `specs/tokens.md` | design tokens, referenced as `$name` |

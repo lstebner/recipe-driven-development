@@ -76,6 +76,7 @@ doesn't match the kind of spec it became.
 | `approved` | intent is settled; ready to build | **you only**: say "approve AlbumDetail" and confirm the prompt, or edit the status yourself |
 | `implemented` | built; not yet fully verified | Claude |
 | `verified` | every rule passed `/spec-verify`, and you tasted it | Claude proposes it; **you confirm** |
+| `deprecated` | off the menu: kept as a record, never built against or edited again | Claude proposes it; **you confirm** |
 
 Once a spec leaves `draft`, its frontmatter and every section except **Used by**,
 **Open amendments** and **Decisions** are protected. Claude Code will ask your permission
@@ -97,6 +98,43 @@ way Claude never has to choose between leaving a rule unchecked and claiming a â
 
 Lint holds the line afterwards: if a verified spec changes (say you accept an amendment), its
 report no longer matches the fingerprint and lint fails until it's re-verified.
+
+### Deprecating (`deprecated`)
+
+Recipes come off the menu: a feature is dropped, or something newer replaces it. Deleting the
+spec would lose the record of what was meant, and the code usually lags behind: old components
+stay imported, old endpoints keep their callers for a while. So the spec stays, marked so Claude
+knows not to use it:
+
+```markdown
+---
+api: GetAlbumPrice
+status: deprecated
+deprecated: 2026-10-22          # the date it came off the menu, for digging through history later
+replaced_by: GetAlbum           # optional: what to use instead (a list if it was split up)
+endpoint: GET /albums/{id}/price
+---
+```
+
+Say "deprecate GetAlbumPrice, GetAlbum replaces it" and Claude sets these fields, adding a dated
+line under Decisions saying why, in one edit. The hook checks the date and the replacement and
+asks you to confirm. Claude also takes it off `outline.md`, which lists only what's current; lint
+fails until it does. A draft was never agreed on, so there's nothing to keep: delete it instead.
+
+From then on the spec is **frozen**:
+
+- **Never edited.** The hook refuses every edit Claude tries, Decisions included. If you change
+  your mind, edit the status back yourself, or write a new spec.
+- **Never built against.** Claude follows `replaced_by` instead, and doesn't extend code that only
+  exists for the deprecated spec. When Claude edits a file listed in its `source`, a hook reminds
+  it that the spec is deprecated.
+- **Still visible.** Lint warns wherever a live spec still points at it (fix those with an
+  amendment), and `--summary` lists every deprecated spec with any tests still tagged with its
+  rules: that's code that hasn't caught up yet.
+- **Out of the way.** Lint checks only its deprecation fields, so missing source files or renamed
+  references can't break it. It drops out of everyone's Used by, and a replacement can claim the
+  same endpoint. Its name and rule IDs stay taken, so old commits and test names still point at
+  exactly one thing.
 
 ## Screen spec
 
@@ -399,3 +437,4 @@ line to Decisions, all in one edit. That edit triggers a prompt naming the amend
 - `/spec-new [kind] <Name>[: what it's for]`: add a spec to the outline and draft it; with no arguments, draft everything in the outline that has no spec.
 - `/spec-review <Name>`: Claude critiques a spec before it's built.
 - `/spec-verify <Name>`: Claude checks the implementation rule by rule, writes `_reports/<Name>.md`, and then asks you to taste it.
+- "deprecate <Name>, <Other> replaces it": Claude marks it `deprecated`, and you confirm the prompt.

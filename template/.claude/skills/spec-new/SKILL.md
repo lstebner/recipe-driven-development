@@ -27,7 +27,8 @@ the draft and fill in what they've told you. It's always a `draft`: only the use
 2. **Create the files** with `node scripts/spec-lint.mjs --scaffold`. It creates a draft for
    every outline entry without a spec, fills in the line as the Goal or Purpose (and an API's
    leading `GET /path` as its endpoint), and never touches existing specs. If a name is already
-   taken, tell the user which spec has it and skip it.
+   taken, tell the user which spec has it and skip it. A deprecated spec keeps its name for good,
+   so a replacement needs a new one (`GetAlbumV2`, or a name that says what changed).
 3. **Draft the content**, following the drafting rule in `CLAUDE.md`: write only what the user
    said or clearly implied, using this conversation and the outline (including the notes
    indented under each entry). That usually means a Goal or Purpose, a few checkable Rules, and
