@@ -76,6 +76,10 @@ project: one verified, a few approved (one with an open amendment), and a couple
 ./test/run.sh                  # end-to-end check in a throwaway repo
 ```
 
+The kit is versioned: `node scripts/spec-lint.mjs --version` prints the version a repo has, and
+`--update` says which version it's updating from. [`CHANGELOG.md`](CHANGELOG.md) lists what
+changed in each one, and flags anything that could make your existing specs fail lint after an update.
+
 You may need to **keep permission prompts on.** Your sign-off is a Claude Code permission prompt.
 Under modes that skip prompts, the "ask" may never reach you, and the locks quietly stop working.
 
@@ -111,7 +115,8 @@ features.
 ## Issues/suggestions
 
 Feel free to open issues here in this repo if you run into problems or have ideas that can
-improve the way this works.
+improve the way this works. Pull requests should add a line under **Unreleased** in
+[`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 

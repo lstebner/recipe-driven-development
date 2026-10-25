@@ -10,11 +10,15 @@
 //                  changes; only allow `verified` with a passing report, and then only after the user confirms
 //   --hook-bash    Claude Code PreToolUse hook (Bash): ask the user before a shell command that looks like it writes to specs/
 //   --hook-post    Claude Code PostToolUse hook: report lint errors back to Claude after a relevant edit
+//   --version      print the kit version
 //   --root <dir>   repo root (default: $CLAUDE_PROJECT_DIR, else the parent of this script's directory)
 import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+
+// The kit's version, shared by this script, the skills and the CLAUDE.md rules. Bump it with an entry in CHANGELOG.md.
+const VERSION = "0.1.0"
 
 const args = process.argv.slice(2)
 const has = (flag) => args.includes(flag)
@@ -679,7 +683,8 @@ const hookPost = () => {
 
 // ---------- main ----------
 
-if (has("--hook-pre")) hookPre()
+if (has("--version")) console.log(VERSION)
+else if (has("--hook-pre")) hookPre()
 else if (has("--hook-bash")) hookBash()
 else if (has("--hook-post")) hookPost()
 else if (!existsSync(specsDir)) console.log(`no specs/ directory under ${root}`)

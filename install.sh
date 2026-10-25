@@ -21,7 +21,21 @@ copy() { # copy <src> <dest> [refreshable]
   fi
 }
 
-echo "Installing Recipe-Driven Development into $target"
+# The kit's version lives in spec-lint.mjs. Read it from the file rather than running it, since an install
+# from before versioning has no --version flag.
+version_of() { sed -n 's/^const VERSION = "\(.*\)"$/\1/p' "$1" 2>/dev/null; }
+version="$(version_of "$tpl/scripts/spec-lint.mjs")"
+echo "Installing Recipe-Driven Development $version into $target"
+if [[ -f "$target/scripts/spec-lint.mjs" ]]; then
+  installed="$(version_of "$target/scripts/spec-lint.mjs")"
+  if [[ "$installed" == "$version" ]]; then
+    echo "  already at $version"
+  elif [[ "$update" == --update ]]; then
+    echo "  updating from ${installed:-a version before 0.1.0} to $version; see CHANGELOG.md for what changed"
+  else
+    echo "  this repo has ${installed:-a version before 0.1.0}; run with --update to refresh spec-lint.mjs, the skills and the CLAUDE.md rules"
+  fi
+fi
 for f in README.md tokens.md outline.md _templates/{screen,component,flow,model,api}.md; do
   copy "$tpl/specs/$f" "$target/specs/$f"
 done
