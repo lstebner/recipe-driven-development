@@ -93,7 +93,9 @@ EOF
 
 # .gitignore: what Claude last saw of each spec is per checkout, so a teammate's changes show up after a pull.
 # Compare lines without CR line endings, trailing whitespace or a leading "/", so an existing entry is recognised.
-if ! { tr -d '\r' < "$target/.gitignore" | sed 's/[[:space:]]*$//; s#^/##' | grep -qxF "specs/.last-seen.json"; } 2>/dev/null; then
+# One awk reading the file itself, not a pipeline: under pipefail, a grep -q that stops early fails the pipe.
+if ! awk '{ sub(/\r$/, ""); sub(/[ \t]+$/, ""); sub(/^\//, "") } $0 == "specs/.last-seen.json" { found = 1 } END { exit !found }' \
+  "$target/.gitignore" 2>/dev/null; then
   { [[ -s "$target/.gitignore" && -n "$(tail -c1 "$target/.gitignore")" ]] && echo; echo "specs/.last-seen.json"; } >> "$target/.gitignore"
   echo "  append  .gitignore (specs/.last-seen.json)"
 else

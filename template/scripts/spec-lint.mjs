@@ -921,7 +921,7 @@ const hookBash = () => {
 // After a shell command the Bash hook asked about has run, record how it left the specs (see beginOwnChange).
 const hookBashPost = () => {
   const { tool_input: input = {}, tool_use_id: id } = readStdin()
-  if (existsSync(specsDir)) endOwnChange(id ?? `bash:${input.command}`, loadAll(), { anyNew: true })
+  if (existsSync(specsDir)) endOwnChange(id ?? `bash:${input.command}`, loadAll, { anyNew: true })
 }
 
 // ---------- noticing changes ----------
@@ -1066,8 +1066,10 @@ const beginOwnChange = (id, specs, keys) => {
     writeSeen(record)
   })
 }
-const endOwnChange = (id, specs, { anyNew = false } = {}) => {
-  const now = snapshot(specs)
+const endOwnChange = (id, loadSpecs, { anyNew = false } = {}) => {
+  // Most tool calls have nothing to record (the Bash hook runs after every command), so check before fingerprinting.
+  if (!readSeen().record?.pending[id]) return
+  const now = snapshot(loadSpecs())
   withSeenLock(() => {
     const { record } = readSeen()
     const before = record?.pending[id]
@@ -1096,7 +1098,7 @@ const hookPost = () => {
   const file = input.file_path && path.resolve(input.file_path)
   if (!file || !existsSync(specsDir)) return
   const specs = loadAll()
-  if (specKind(file) && specKind(file) !== "tokens") endOwnChange(id ?? `file:${file}`, specs)
+  if (specKind(file) && specKind(file) !== "tokens") endOwnChange(id ?? `file:${file}`, () => specs)
   const sourcesOf = (spec) => asList(spec.fm.source).map((src) => path.join(root, src))
   const sources = new Set(specs.all.flatMap(sourcesOf))
   if (!file.startsWith(specsDir + path.sep) && !sources.has(file)) return

@@ -716,6 +716,9 @@ out="$(seen)"; [[ "$out" == *"couldn't be read, so changes since then can't be l
 out="$(seen)"; [[ -z "$out" ]] && pass "  ...and it starts afresh" || fail "seen: corrupt restart" "$out"
 gi="$(mktemp -d)"; printf 'node_modules\r\n/specs/.last-seen.json \r\n' > "$gi/.gitignore"; "$kit/install.sh" "$gi" >/dev/null
 [[ "$(grep -c "last-seen" "$gi/.gitignore")" == 1 ]] && pass "install recognises an existing .gitignore entry, CRLF and all" || fail "gitignore dup" "$(cat -A "$gi/.gitignore")"
+{ echo "specs/.last-seen.json"; for i in $(seq 1 1000); do echo "build/output-directory-number-$i/"; done; } > "$gi/.gitignore"
+for i in 1 2 3; do "$kit/install.sh" "$gi" >/dev/null; done
+[[ "$(grep -c "last-seen" "$gi/.gitignore")" == 1 ]] && pass "  ...in a large .gitignore too" || fail "gitignore dup, large file" "$(grep -c last-seen "$gi/.gitignore") entries"
 rm -rf "$gi"
 
 echo "example"
