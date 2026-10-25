@@ -23,6 +23,14 @@ edit_json() { # edit_json <file> <old> <new>
   node -e 'console.log(JSON.stringify({ tool_name: "Edit", tool_input: { file_path: process.argv[1], old_string: process.argv[2], new_string: process.argv[3] } }))' "$1" "$2" "$3"
 }
 
+deprecate_json() { # deprecate_json <file> <frontmatter that replaces "status: approved"> [decision]: a Write that deprecates, with a Decisions line
+  node -e '
+    const fs = require("fs"); const [file, fm, decision] = process.argv.slice(1); const t = fs.readFileSync(file, "utf8")
+    let after = t.replace("status: approved", fm)
+    if (decision) after = /^## Decisions$/m.test(after) ? after.replace(/^## Decisions\n/m, `## Decisions\n${decision}\n`) : `${after.trimEnd()}\n\n## Decisions\n${decision}\n`
+    console.log(JSON.stringify({ tool_name: "Write", tool_input: { file_path: file, content: after } }))' "$1" "$2" "${3:-}"
+}
+
 echo "install"
 out="$("$kit/install.sh" "$repo")" || fail "install" "$out"
 out2="$("$kit/install.sh" "$repo")"
@@ -43,6 +51,12 @@ out="$("$kit/install.sh" "$older" --update 2>&1)"; code=$?
 [[ $code -ne 0 && "$out" == *"9.9.9, which is newer than this kit"* && "$(node "$older/scripts/spec-lint.mjs" --version)" == "9.9.9" ]] \
   && pass "--update refuses to downgrade" || fail "--update downgrade" "$out"
 out="$("$kit/install.sh" "$older" 2>&1)"; [[ $? -eq 0 && "$out" == *"newer than this kit"* ]] && pass "  ...and a plain install says the repo is newer" || fail "install newer" "$out"
+echo "my notes" >> "$older/specs/README.md"
+"$kit/install.sh" "$older" >/dev/null 2>&1
+grep -q "^my notes$" "$older/specs/README.md" && pass "a plain install keeps specs/README.md" || fail "install keeps format docs" "$(tail -2 "$older/specs/README.md")"
+sed -i 's/^const VERSION = .*/const VERSION = "0.0.1"/' "$older/scripts/spec-lint.mjs"
+"$kit/install.sh" "$older" --update >/dev/null 2>&1
+cmp -s "$older/specs/README.md" "$kit/template/specs/README.md" && pass "--update refreshes specs/README.md, the format docs" || fail "--update format docs" "$(tail -2 "$older/specs/README.md")"
 rm -rf "$older"
 [[ "$(grep -c spec-lint.mjs "$repo/.claude/settings.json")" == 3 && "$(grep -c rdd:start "$repo/CLAUDE.md")" == 1 ]] \
   && pass "install is idempotent" || fail "install is idempotent" "$out2"
@@ -322,6 +336,24 @@ mutate_in "$policy" "changing a policy makes a verified spec that relies on it s
 out="$(hook pre "$(edit_json "$policy" "see Home and Sign in." "see Home only.")")"
 [[ "$out" == *'"permissionDecision":"ask"'* && "$out" == *"Rules"* && "$out" == *"DesktopNav, MobileNav rely on NavLinks; MobileNav will need re-verifying."* ]] \
   && pass "pre: changing a policy asks, naming the specs that rely on it" || fail "pre: policy Rules" "$out"
+out="$(hook pre "$(deprecate_json "$policy" $'status: deprecated\ndeprecated: 2026-10-25' "- 2026-10-25: Deprecated: navigation moved to the sidebar.")")"
+[[ "$out" == *'"ask"'* && "$out" == *"get a lint warning (DesktopNav, MobileNav)"* ]] && pass "pre: deprecating a policy names the specs that rely on it" || fail "pre: deprecate policy" "$out"
+cp "$policy" "$policy.bak"; sed -i 's/^status: approved$/status: deprecated\ndeprecated: 2026-10-25/' "$policy"
+[[ "$(lint --hash MobileNav)" == "$navhash" ]] && pass "deprecating a policy leaves the fingerprints of specs that use it alone" || fail "deprecated policy fingerprint" "$(lint)"
+mv "$policy.bak" "$policy"
+cp "$policy" "$policy.bak"; sed -i 's/^status: approved$/status: draft/' "$policy"
+expect_err "a verified spec can't rely on a draft policy" "[[policy:NavLinks]] is still a draft, and its rules are part of what MobileNav asks for"
+out="$(lint)"; [[ "$out" == *"DesktopNav.md"*"warning"*"is still a draft"* ]] && pass "  ...and an approved one is warned" || fail "approved on draft policy" "$out"
+mv "$policy.bak" "$policy"
+cat >> "$repo/specs/components/DesktopNav.md" <<'EOF'
+
+## Inputs
+| input | notes |
+|---|---|
+| user | |
+| user | again |
+EOF
+out="$(lint)"; [[ "$out" != *'duplicate key "user"'* ]] && pass "only policies have their Inputs keys checked" || fail "inputs on a component" "$out"
 rm "$policy" "$nav" "$repo/specs/components/DesktopNav.md" "$repo/specs/_reports/MobileNav.md"; lint --fix >/dev/null
 
 echo "hooks"
@@ -408,13 +440,6 @@ api="$repo/specs/apis/GetAlbum.md"
 cp "$api" "$api.orig"
 sed 's/^api: GetAlbum$/api: GetAlbumV2/; s/GetAlbum\.R/GetAlbumV2.R/; s/^status: approved/status: draft/' "$api" > "$repo/specs/apis/GetAlbumV2.md"
 lint --fix >/dev/null
-deprecate_json() { # deprecate_json <file> <frontmatter that replaces "status: approved"> [decision]: a Write that deprecates, with a Decisions line
-  node -e '
-    const fs = require("fs"); const [file, fm, decision] = process.argv.slice(1); const t = fs.readFileSync(file, "utf8")
-    let after = t.replace("status: approved", fm)
-    if (decision) after = /^## Decisions$/m.test(after) ? after.replace(/^## Decisions\n/m, `## Decisions\n${decision}\n`) : `${after.trimEnd()}\n\n## Decisions\n${decision}\n`
-    console.log(JSON.stringify({ tool_name: "Write", tool_input: { file_path: file, content: after } }))' "$1" "$2" "${3:-}"
-}
 deprecate() { hook pre "$(deprecate_json "$api" "$1" "- 2026-10-24: Deprecated: GetAlbumV2 supersedes it.")"; }
 out="$(deprecate "status: deprecated")"
 [[ "$out" == *'"deny"'* && "$out" == *"must be the date it was deprecated"* ]] && pass "pre: deprecating without a date is refused" || fail "pre: no date" "$out"

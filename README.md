@@ -77,7 +77,7 @@ deprecated.
 
 ```
 ./install.sh <repo>            # adds specs/, scripts/spec-lint.mjs, three skills, hooks, CLAUDE.md rules
-./install.sh <repo> --update   # also refreshes spec-lint.mjs, the skills and the CLAUDE.md rules
+./install.sh <repo> --update   # also refreshes spec-lint.mjs, specs/README.md, the skills and the CLAUDE.md rules
 ./test/run.sh                  # end-to-end check in a throwaway repo
 ```
 

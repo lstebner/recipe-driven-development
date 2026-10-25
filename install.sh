@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install Recipe-Driven Development into a repo. Safe to re-run: existing files are never overwritten
-# (spec-lint.mjs, the skills and the CLAUDE.md rules block are refreshed only with --update).
+# (spec-lint.mjs, specs/README.md, the skills and the CLAUDE.md rules block are refreshed only with --update).
 #   ./install.sh <repo> [--update]
 set -euo pipefail
 
@@ -38,10 +38,12 @@ if [[ -f "$target/scripts/spec-lint.mjs" ]]; then
   elif [[ "$update" == --update ]]; then
     echo "  updating from ${installed:-a version before 0.1.0} to $version; see CHANGELOG.md for what changed"
   else
-    echo "  this repo has ${installed:-a version before 0.1.0}; run with --update to refresh spec-lint.mjs, the skills and the CLAUDE.md rules"
+    echo "  this repo has ${installed:-a version before 0.1.0}; run with --update to refresh spec-lint.mjs, specs/README.md, the skills and the CLAUDE.md rules"
   fi
 fi
-for f in README.md tokens.md outline.md _templates/{screen,component,flow,model,api,policy}.md; do
+# specs/README.md is the format definition, so it's the kit's to keep current; the rest of specs/ is yours.
+copy "$tpl/specs/README.md" "$target/specs/README.md" yes
+for f in tokens.md outline.md _templates/{screen,component,flow,model,api,policy}.md; do
   copy "$tpl/specs/$f" "$target/specs/$f"
 done
 mkdir -p "$target"/specs/{screens,components,flows,models,apis,policies,_reports}

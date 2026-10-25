@@ -28,14 +28,16 @@ const argOf = (flag) => (has(flag) ? args[args.indexOf(flag) + 1] : null)
 const root = path.resolve(argOf("--root") || process.env.CLAUDE_PROJECT_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), ".."))
 const specsDir = path.join(root, "specs")
 
-// One entry per kind of spec: its folder under specs/, required sections, and whether it gets a generated "Used by".
+// One entry per kind of spec: its folder under specs/, required sections, whether it gets a generated "Used by",
+// and whether its content counts toward the fingerprint of specs that reference it. Only policies do: their rules
+// are part of what a referencing spec asks for, while a model or API is a contract with its own report.
 const KINDS = {
   screen: { dir: "screens", required: ["Goal", "Rules"] },
   component: { dir: "components", required: ["Purpose"], usedBy: true },
   flow: { dir: "flows", required: ["Goal", "Steps", "Rules"] },
   model: { dir: "models", required: ["Purpose", "Fields"], usedBy: true },
   api: { dir: "apis", required: ["Purpose", "Rules"], usedBy: true },
-  policy: { dir: "policies", required: ["Purpose", "Rules"], usedBy: true },
+  policy: { dir: "policies", required: ["Purpose", "Rules"], usedBy: true, fingerprinted: true },
 }
 const STATUSES = ["draft", "approved", "implemented", "verified", "deprecated"]
 // Claude may move a spec between these on evidence; anything else (e.g. → approved) is the user's call.
@@ -303,18 +305,32 @@ const protectedParts = (text, texts = sectionTexts(text)) => {
   return parts
 }
 
-// The policies a spec relies on, by name.
-const policiesOf = (text) => [...new Set(typedRefsOf(parseSpec(text, "", null)).filter((r) => r.kind === "policy").map((r) => r.name))].sort()
+// The specs whose content counts toward this one's fingerprint (see KINDS), as sorted "kind:Name" keys.
+const fingerprintedRefsOf = (spec) =>
+  [...new Set(typedRefsOf(spec).filter((r) => KINDS[r.kind].fingerprinted).map((r) => `${r.kind}:${r.name}`))].sort()
 
-// Fingerprint of what a spec asks for. Status and source are progress, not intent, so they're left out:
-// marking a spec verified doesn't make its report stale, but changing a rule does. The policies it relies on
-// are part of what it asks for, so changing one of their rules makes its report stale too.
-const specHash = (text, seen = new Set()) => {
-  const { status, source, ...intent } = parseFrontmatter(normalize(text)).data ?? {}
-  const parts = { ...protectedParts(text), frontmatter: JSON.stringify(intent) }
-  for (const name of policiesOf(text)) {
-    const file = path.join(specsDir, KINDS.policy.dir, `${name}.md`)
-    if (!seen.has(name) && existsSync(file)) parts[`[[policy:${name}]]`] = specHash(readFileSync(file, "utf8"), new Set([...seen, name]))
+// Referenced specs, read from disk at most once per run: a fingerprint can pull in the same policy many times.
+const referencedSpecs = new Map()
+const referencedSpec = (kind, name) => {
+  const key = `${kind}:${name}`
+  if (!referencedSpecs.has(key)) {
+    const file = path.join(specsDir, KINDS[kind].dir, `${name}.md`)
+    referencedSpecs.set(key, existsSync(file) ? loadSpec(file, kind) : null)
+  }
+  return referencedSpecs.get(key)
+}
+
+// Fingerprint of what a spec asks for. Status, source and the deprecation fields are lifecycle, not intent, so
+// they're left out: marking a spec verified, or deprecating a policy it uses, doesn't make its report stale, but
+// changing a rule does. The policies it relies on are part of what it asks for, so changing one of their rules
+// makes its report stale too.
+const hashOf = (spec, seen = new Set()) => {
+  const { status, source, deprecated, replaced_by, ...intent } = spec.fm
+  const parts = { ...protectedParts(spec.raw), frontmatter: JSON.stringify(intent) }
+  for (const key of fingerprintedRefsOf(spec)) {
+    const [kind, name] = key.split(":")
+    const target = seen.has(key) ? null : referencedSpec(kind, name)
+    if (target) parts[`[[${key}]]`] = hashOf(target, new Set([...seen, key]))
   }
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 12)
 }
@@ -326,11 +342,11 @@ const checkReport = (spec) => {
   if (!existsSync(file)) return { file, problems: [`there's no report at ${rel(file)}; run /spec-verify ${spec.name}`], passed: 0, total: 0, taste: [] }
   const lines = normalize(readFileSync(file, "utf8")).split("\n")
   const problems = []
-  const hash = specHash(spec.raw)
+  const hash = hashOf(spec)
   const stamp = lines.map((l) => /\bSpec:\s*`?([0-9a-f]{12})\b/.exec(l)?.[1]).find(Boolean)
   if (!stamp) problems.push(`${rel(file)} has no "Spec: <hash>" line`)
   else if (stamp !== hash) {
-    const policies = policiesOf(spec.raw)
+    const policies = fingerprintedRefsOf(spec).map((key) => key.split(":")[1])
     const what = policies.length ? `the spec or a policy it relies on (${policies.join(", ")})` : "the spec"
     problems.push(`${rel(file)} was written for an older version of ${what} (Spec: ${stamp}, now ${hash}); set status: implemented and re-run /spec-verify ${spec.name}`)
   }
@@ -466,6 +482,11 @@ const lint = ({ all, live, tokens, outline }) => {
       }
       if (target !== spec && KINDS[target.kind].usedBy) addUser(target.name, spec)
       if (isDeprecated(target)) report("warning", spec, ref.n, `${label} points at ${target.name}, which is ${deprecationNote(target, byName)}`)
+      // A draft can change without anyone being asked, which would quietly change what this spec asks for.
+      if (KINDS[target.kind].fingerprinted && (target.fm.status ?? "draft") === "draft" && fm.status !== "draft") {
+        const level = ["implemented", "verified"].includes(fm.status) ? "error" : "warning"
+        report(level, spec, ref.n, `${label} is still a draft, and its rules are part of what ${spec.name} asks for — approve ${target.name} before building on it`)
+      }
       if (!ref.member) continue
       if (!["model", "api"].includes(target.kind)) report("error", spec, ref.n, `${label}: only models (#field) and APIs (#error_code) have members`)
       else if (!membersOf(target).includes(ref.member)) {
@@ -475,7 +496,7 @@ const lint = ({ all, live, tokens, outline }) => {
     }
 
     // Table keys must be unique: model fields, API error codes, policy inputs, copy keys.
-    for (const section of ["fields", "errors", "inputs", "copy"]) {
+    for (const section of ["fields", "errors", ...(kind === "policy" ? ["inputs"] : []), "copy"]) {
       const keys = new Set()
       for (const row of tableKeys(spec.sections[section])) {
         if (keys.has(row.key)) report("error", spec, row.n, `duplicate key "${row.key}" in ${spec.sections[section].name}`)
@@ -738,6 +759,8 @@ const hookPre = () => {
   const oldParts = protectedParts(before, oldTexts)
   const newParts = protectedParts(after, newTexts)
   const changed = [...new Set([...Object.keys(oldParts), ...Object.keys(newParts)])].filter((k) => oldParts[k] !== newParts[k])
+  // The specs that point at this one, from the same map lint builds Used by from (only kinds with a Used by).
+  const relying = () => (KINDS[kind]?.usedBy ? (lint(loadAll()).usersOf.get(name) ?? []) : [])
 
   // tokens.md has no lifecycle beyond being protected once it leaves draft.
   if (kind !== "tokens") {
@@ -771,10 +794,12 @@ const hookPre = () => {
       const replaced = replacementsOf({ fm: newFm })
       // Specs already deprecated in favour of this one will point at a deprecated spec from now on.
       const pointing = deprecated.filter((s) => replacementsOf(s).includes(name)).map((s) => s.name)
+      const users = relying().map((s) => s.name)
       return decide(
         "ask",
         `Deprecate ${name} (${from} → deprecated)${replaced.length ? `, replaced by ${replaced.join(", ")}` : ", with no replacement"}? ` +
-          `From here it's frozen: Claude won't build against it or edit it again, and specs that still point at it get a lint warning. ` +
+          `From here it's frozen: Claude won't build against it or edit it again, and specs that still point at it get a lint warning` +
+          `${users.length ? ` (${users.join(", ")})` : ""}. ` +
           `${pointing.length ? `Deprecated specs that name ${name} as their replacement will keep pointing at it: ${pointing.join(", ")}. ` : ""}` +
           `Approve if that's your decision; deny if not.`,
       )
@@ -800,11 +825,12 @@ const hookPre = () => {
     const progressOnly = JSON.stringify(rest1) === JSON.stringify(rest2) && (s1 === s2 || (CLAUDE_STATUSES.includes(s1) && CLAUDE_STATUSES.includes(s2) && s2 !== "approved"))
     if (progressOnly) return
   }
-  // A policy is shared, so say which specs a change reaches: verified ones will need re-verifying.
-  const relying = kind === "policy" ? loadAll().live.filter((s) => s.name !== name && policiesOf(s.raw).includes(name)) : []
-  const verified = relying.filter((s) => s.fm.status === "verified").map((s) => s.name)
-  const reach = relying.length
-    ? ` ${relying.map((s) => s.name).join(", ")} rely on ${name}${verified.length ? `; ${verified.join(", ")} will need re-verifying` : ""}.`
+  // A policy is part of every spec that references it, so say which specs a change reaches: verified ones will
+  // need re-verifying.
+  const users = KINDS[kind]?.fingerprinted ? relying() : []
+  const verified = users.filter((s) => s.fm.status === "verified").map((s) => s.name)
+  const reach = users.length
+    ? ` ${users.map((s) => s.name).join(", ")} rely on ${name}${verified.length ? `; ${verified.join(", ")} will need re-verifying` : ""}.`
     : ""
   // Applying an amendment removes it from Open amendments; this prompt is where the user accepts it.
   const stillOpen = new Set(openAmendments(after).map((a) => a.id))
@@ -879,7 +905,7 @@ else if (has("--hash")) {
     console.error(`no spec named "${argOf("--hash") ?? ""}"`)
     process.exit(1)
   }
-  console.log(specHash(spec.raw))
+  console.log(hashOf(spec))
 } else {
   let specs = loadAll()
   if (has("--fix")) {
