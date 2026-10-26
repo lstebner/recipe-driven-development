@@ -258,6 +258,23 @@ out="$(lint --fix)" && pass "flow, model and api lint clean after --fix" || fail
 grep -q "^- GetAlbum (api)$" "$repo/specs/models/Album.md" && grep -q "^- Checkout (flow)$" "$repo/specs/apis/GetAlbum.md" \
   && pass "Used by lists who references models and APIs" || fail "Used by for models/apis" "$(cat "$repo/specs/models/Album.md" "$repo/specs/apis/GetAlbum.md")"
 out="$(lint --summary)"; [[ "$out" == *"Models, APIs & policies"*"Album"*"← Checkout, GetAlbum"* ]] && pass "summary lists model and API users" || fail "summary models" "$out"
+refs() { lint --refs "$1"; }
+out="$(refs PrimaryButton)"
+[[ "$out" == "PrimaryButton (component, approved) is relied on by:"* && "$out" == *$'\n  AlbumDetail  screen  approved  layout'* && "$out" == *$'\n    Checkout   flow    approved  step 1'* ]] \
+  && pass "--refs lists who relies on a component, and who relies on them" || fail "--refs component" "$out"
+out="$(refs Album)"; [[ "$out" == *"GetAlbum"*"response"* && "$out" == *"Checkout"*"step 2"* ]] && pass "--refs names the section or step of each link" || fail "--refs model" "$out"
+out="$(refs Album#price)"; [[ "$out" == *Checkout* && "$out" != *GetAlbum* ]] && pass "--refs Name#field lists only links to that field" || fail "--refs field" "$out"
+out="$(refs GetAlbum#not_found)"; [[ "$out" == *"Checkout"*"step 1"* ]] && pass "--refs Name#error_code too" || fail "--refs error code" "$out"
+out="$(refs Album#cost)"; [[ $? -eq 1 && "$out" == *'Album has no field "cost" (known: id, price)'* ]] && pass "--refs refuses a member that isn't there" || fail "--refs bad member" "$out"
+out="$(refs Checkout)"; [[ "$out" == "Nothing live relies on Checkout (flow, approved)." ]] && pass "--refs says when nothing relies on a spec" || fail "--refs none" "$out"
+out="$(refs Nope)"; [[ $? -eq 1 && "$out" == *'no spec named "Nope"'* ]] && pass "--refs refuses an unknown spec" || fail "--refs unknown" "$out"
+sed 's/^flow: Checkout$/flow: OldCheckout/; s/^status: approved$/status: deprecated\ndeprecated: 2026-10-26/; s/Checkout\.R/OldCheckout.R/' "$repo/specs/flows/Checkout.md" > "$repo/specs/flows/OldCheckout.md"
+out="$(refs AlbumDetail)"; [[ "$out" == *"Also referenced by deprecated spec OldCheckout, which won't change."* && "$out" != *"  OldCheckout"* ]] \
+  && pass "--refs lists deprecated specs apart" || fail "--refs deprecated" "$out"
+rm "$repo/specs/flows/OldCheckout.md"
+out="$(hook pre "$(edit_json "$repo/specs/components/PrimaryButton.md" "The PrimaryButton." "Anything.")")"
+[[ "$out" == *'"ask"'* && "$out" == *"Relied on by AlbumDetail (approved), Checkout (approved, through AlbumDetail); see node scripts/spec-lint.mjs --refs PrimaryButton."* ]] \
+  && pass "pre: a protected change names who relies on the spec" || fail "pre: relied on by" "$out"
 flow="$repo/specs/flows/Checkout.md"
 mutate_in() { # mutate_in <file> <name> <expect_err|expect_warn> <substring> <sed expr>
   cp "$1" "$1.bak"; sed -i "$5" "$1"; "$3" "$2" "$4"; mv "$1.bak" "$1"
