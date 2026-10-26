@@ -9,8 +9,18 @@ status: draft
 ## Variants
 <!-- - default: ... -->
 
-## Props / States
-<!-- Props, plus states like hover / disabled / loading / error. -->
+## Props
+<!-- One row per prop, named in backticks as in code. A prop that drives a state says "→ state <name>" in notes. -->
+| prop | type | required | default | notes |
+|---|---|---|---|---|
+
+## States
+<!-- One row per state (hover / pressed / disabled / loading / error…), named in plain lowercase. "when" names the prop or event behind it. -->
+| state | when | looks like |
+|---|---|---|
+
+## Rules
+<!-- Optional. - R1: one checkable statement per bullet, for behaviour ("not pressable while loading"). -->
 
 ## Style
 <!-- Use $tokens, not raw values. -->

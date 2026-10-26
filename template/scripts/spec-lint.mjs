@@ -40,13 +40,20 @@ const specsDir = path.join(root, "specs")
 // of what a referencing spec asks for, while a model or API is a contract with its own report. Purpose and
 // Examples explain the decision rather than make it, so editing them doesn't send anyone back to re-verify.
 const KINDS = {
-  screen: { dir: "screens", required: ["Goal", "Rules"] },
-  component: { dir: "components", required: ["Purpose"], usedBy: true },
+  screen: { dir: "screens", required: ["Goal", "Rules"], keyed: ["states"] },
+  component: { dir: "components", required: ["Purpose"], usedBy: true, keyed: ["props", "states"] },
   flow: { dir: "flows", required: ["Goal", "Steps", "Rules"] },
   model: { dir: "models", required: ["Purpose", "Fields"], usedBy: true },
   api: { dir: "apis", required: ["Purpose", "Rules"], usedBy: true },
   policy: { dir: "policies", required: ["Purpose", "Rules"], usedBy: true, keyed: ["inputs"], fingerprinted: ["inputs", "output", "rules", "must not"] },
 }
+// The tables a kind's Props and States sections hold, column by column. A prop is a code identifier, in backticks
+// as it's written in code; a state is a plain lowercase name. A prop that drives a state says so in its notes
+// ("→ state loading"), and the state's "when" names the prop. What must or must never happen is a rule, not a note.
+const PROPS_COLUMNS = ["prop", "type", "required", "default", "notes"]
+const STATES_COLUMNS = ["state", "when", "looks like"]
+const TABLES = { component: { props: PROPS_COLUMNS, states: STATES_COLUMNS }, screen: { states: STATES_COLUMNS } }
+const RULE_WORDS = /\b(must|never|always|should|cannot|can't|won't)\b/i
 const STATUSES = ["draft", "approved", "implemented", "verified", "deprecated"]
 // A spec with no status is treated as a draft everywhere: the least that's been agreed.
 const statusOf = (spec) => spec.fm.status ?? "draft"
@@ -121,6 +128,14 @@ const tableKeys = (section) =>
     .map((row) => ({ n: row.n, key: row.cells[0].replace(/^`|`$/g, "").replace(/^\$/, "") }))
     .filter((row) => row.key)
 
+// Header row of each table in a section: the one right above a |---| line.
+const tableHeaders = (section) => {
+  const lines = section?.lines ?? []
+  return lines.filter((l, i) => isTableRow(l.text) && isSeparator(lines[i + 1]?.text)).map((l) => ({ n: l.n, cells: cellsOf(l.text).map((c) => c.toLowerCase()) }))
+}
+// A component's props by name, from its Props table (backticks dropped), or null if it has none.
+const propsOf = (spec) => (spec.sections.props ? new Set(tableKeys(spec.sections.props).map((k) => k.key.replace(/`/g, ""))) : null)
+
 const parseSpec = (raw, file, kind) => {
   const text = normalize(raw)
   const { data } = parseFrontmatter(text)
@@ -193,6 +208,7 @@ const refsOf = (spec) =>
     local: match[1] === "~",
     name: match[2],
     variant: /variant=([^\s\]]+)/.exec(match[3] ?? "")?.[1],
+    attrs: [...(match[3] ?? "").matchAll(/([\w-]+)=/g)].map((m) => m[1]).filter((a) => a !== "variant"),
   }))
 
 // [[screen:Name]], [[flow:Name]], [[model:Name]], [[model:Name#field]], [[api:Name]], [[api:Name#error_code]], [[policy:Name]]
@@ -536,6 +552,10 @@ const lint = ({ all, live, tokens, outline }) => {
       if (ref.variant && ref.variant !== "default" && !variantsOf(target).includes(ref.variant)) {
         report("error", spec, ref.n, `${ref.name} has no variant "${ref.variant}" (known: ${variantsOf(target).join(", ") || "none"})`)
       }
+      const props = propsOf(target)
+      for (const attr of props ? ref.attrs : []) {
+        if (!props.has(attr)) report("error", spec, ref.n, `${ref.name} has no prop "${attr}" (known: ${[...props].join(", ") || "none"})`)
+      }
     }
     for (const name of shared) if (!uses.has(name)) report("error", spec, 1, `[[${name}]] is in the layout but not in "uses"`)
     for (const name of uses) if (!shared.has(name)) report("error", spec, 1, `"uses" lists ${name} but the layout never references [[${name}]]`)
@@ -579,6 +599,50 @@ const lint = ({ all, live, tokens, outline }) => {
       }
     }
 
+    // Props and States tables (see TABLES).
+    const migrate = `/spec-migrate ${spec.name} converts it`
+    if (kind === "component" && spec.sections["props / states"]) {
+      report("warning", spec, spec.sections["props / states"].line, `"## Props / States" is the old format: split it into a ## Props table and a ## States table, and move guidelines into ## Rules (${migrate})`)
+    }
+    for (const [key, columns] of Object.entries(TABLES[kind] ?? {})) {
+      const section = spec.sections[key]
+      if (!section) continue
+      const loose = section.lines.filter((l) => l.text.trim() && !isTableRow(l.text))
+      const headers = tableHeaders(section)
+      if (!headers.length) {
+        if (loose.length) report("warning", spec, section.line, `${section.name} is a list: write it as a table, | ${columns.join(" | ")} | (${migrate})`)
+        continue
+      }
+      for (const l of loose) report("error", spec, l.n, `${section.name} has a line outside its table: make it a row, or if it's a guideline, a rule in ## Rules`)
+      for (const h of headers) {
+        if (h.cells.join("|") !== columns.join("|")) report("error", spec, h.n, `${section.name}'s columns should be | ${columns.join(" | ")} | (got | ${h.cells.join(" | ")} |)`)
+      }
+    }
+    const stateNames = new Set(tableKeys(spec.sections.states).map((k) => k.key))
+    const propNames = propsOf(spec)
+    if (kind === "component" && tableHeaders(spec.sections.props).length) {
+      for (const { n, cells } of tableRows(spec.sections.props)) {
+        const [name = "", type = "", required = "", , notes = ""] = cells
+        if (!/^`[A-Za-z_$][\w$]*`$/.test(name)) report("error", spec, n, `prop "${name}" should be its name as written in code, in backticks (\`label\`)`)
+        if (!type) report(incomplete, spec, n, `prop ${name} has no type`)
+        if (!["yes", "no"].includes(required.toLowerCase())) report("error", spec, n, `prop ${name}'s "required" should be yes or no (got "${required}")`)
+        for (const m of notes.matchAll(/(?:→|->)\s*state\s+([\w-]+)/g)) {
+          if (!stateNames.has(m[1])) report("error", spec, n, `prop ${name} drives state "${m[1]}", which isn't in States`)
+        }
+        if (RULE_WORDS.test(notes)) report("warning", spec, n, `prop ${name}'s notes read like a rule; put it in ## Rules (or ## Must not) so it gets an ID and a test`)
+      }
+    }
+    if (tableHeaders(spec.sections.states).length && TABLES[kind]?.states) {
+      for (const { n, cells } of tableRows(spec.sections.states)) {
+        const [name = "", when = "", looks = ""] = cells
+        if (!/^[a-z][a-z0-9-]*$/.test(name)) report("error", spec, n, `state "${name}" should be a plain lowercase name, like loading or not-found`)
+        for (const m of propNames ? when.matchAll(/`([^`]+)`/g) : []) {
+          if (!propNames.has(m[1])) report("error", spec, n, `state ${name} depends on \`${m[1]}\`, which isn't in Props`)
+        }
+        if (RULE_WORDS.test(looks)) report("warning", spec, n, `state ${name}'s "looks like" reads like a rule; put it in ## Rules so it gets an ID and a test`)
+      }
+    }
+
     // Copy keys.
     const copyRows = tableKeys(spec.sections.copy)
     const copyKeys = new Set(copyRows.map((r) => r.key))
@@ -590,7 +654,7 @@ const lint = ({ all, live, tokens, outline }) => {
     for (const row of copyRows) if (!usedKeys.has(row.key)) report("warning", spec, row.n, `copy key "${row.key}" is never placed in Layout/States/Rules`)
 
     // Style: tokens, not raw values.
-    for (const { n, match } of scan(spec, ["layout", "states", "style", "variants", "props / states"], /\$([a-z][\w-]*(?:\.[\w-]+)+)/gi)) {
+    for (const { n, match } of scan(spec, ["layout", "states", "style", "variants", "props", "props / states"], /\$([a-z][\w-]*(?:\.[\w-]+)+)/gi)) {
       if (!tokens) report("error", spec, n, `$${match[1]} used but specs/tokens.md doesn't exist`)
       else if (!tokenNames.has(match[1])) report("error", spec, n, `unknown token $${match[1]}`)
     }

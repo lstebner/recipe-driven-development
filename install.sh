@@ -54,7 +54,7 @@ for f in tokens.md outline.md _templates/{screen,component,flow,model,api,policy
 done
 mkdir -p "$target"/specs/{screens,components,flows,models,apis,policies,_reports}
 copy "$tpl/scripts/spec-lint.mjs" "$target/scripts/spec-lint.mjs" yes
-for s in spec-new spec-review spec-verify; do
+for s in spec-new spec-review spec-verify spec-migrate; do
   copy "$tpl/.claude/skills/$s/SKILL.md" "$target/.claude/skills/$s/SKILL.md" yes
 done
 

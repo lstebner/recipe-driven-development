@@ -63,8 +63,8 @@ rm "$older/specs/README.md.old"; "$kit/install.sh" "$older" --update >/dev/null 
 rm -rf "$older"
 [[ "$(grep -c spec-lint.mjs "$repo/.claude/settings.json")" == 6 && "$(grep -c rdd:start "$repo/CLAUDE.md")" == 1 && "$(grep -cxF specs/.last-seen.json "$repo/.gitignore")" == 1 ]] \
   && pass "install is idempotent" || fail "install is idempotent" "$out2"
-[[ -f "$repo/.claude/skills/spec-new/SKILL.md" && -f "$repo/.claude/skills/spec-review/SKILL.md" && -f "$repo/.claude/skills/spec-verify/SKILL.md" ]] \
-  && pass "install adds the three skills" || fail "skills installed" "$(ls "$repo/.claude/skills")"
+[[ -f "$repo/.claude/skills/spec-new/SKILL.md" && -f "$repo/.claude/skills/spec-review/SKILL.md" && -f "$repo/.claude/skills/spec-verify/SKILL.md" && -f "$repo/.claude/skills/spec-migrate/SKILL.md" ]] \
+  && pass "install adds the four skills" || fail "skills installed" "$(ls "$repo/.claude/skills")"
 old="$(mktemp -d)"
 printf '# Mine\n\n<!-- spec-kit:start -->\nold rules\n<!-- spec-kit:end -->\n\nafter\n' > "$old/CLAUDE.md"
 mkdir -p "$old/.claude"
@@ -171,6 +171,9 @@ screen="$repo/specs/screens/AlbumDetail.md"
 mutate() { # mutate <name> <expect_err|expect_warn> <substring> <sed expr>
   cp "$screen" "$screen.bak"; sed -i "$4" "$screen"; "$2" "$1" "$3"; mv "$screen.bak" "$screen"
 }
+mutate_in() { # mutate_in <file> <name> <expect_err|expect_warn> <substring> <sed expr>
+  cp "$1" "$1.bak"; sed -i "$5" "$1"; "$3" "$2" "$4"; mv "$1.bak" "$1"
+}
 mutate "unknown component ref"   expect_err  "[[Ghost]] has no spec"               's/\[\[PrimaryButton\]\]/[[Ghost]]/'
 mutate "bad copy key"            expect_err  "{copy.buyy} isn't in the Copy table" 's/{copy.buy}/{copy.buyy}/'
 mutate "ref missing from uses"   expect_err  "not in \"uses\""                     's/^uses: .*/uses: [ArtistBadge]/'
@@ -197,6 +200,60 @@ sed -i 's/^screen: AlbumDetail/screen: Second/; s/AlbumDetail\.R/Second.R/g; /^s
 lint --fix >/dev/null
 expect_warn "same one-off in two specs warns" "also appears in Second — should it be shared?"
 rm "$repo/specs/screens/Second.md" "$repo/specs/components/Other.md"; lint --fix >/dev/null
+
+echo "props and states"
+toggle="$repo/specs/components/Toggle.md"
+cat > "$toggle" <<'EOF'
+---
+component: Toggle
+status: approved
+---
+## Purpose
+An on/off switch.
+
+## Props
+| prop | type | required | default | notes |
+|---|---|---|---|---|
+| `on` | boolean | yes | | → state on |
+| `onChange` | (on: boolean) => void | yes | | |
+| `disabled` | boolean | no | false | → state disabled |
+
+## States
+| state | when | looks like |
+|---|---|---|
+| on | `on` is true | knob to the right, $color.accent track |
+| disabled | `disabled` is true | 50% opacity |
+| pressed | while held | knob grows slightly |
+
+## Rules
+- R1: Doesn't call `onChange` while disabled.
+EOF
+lint --fix >/dev/null
+out="$(lint)"; [[ $? -eq 0 && "$out" != *Toggle.md*error* && "$out" != *"old format"* && "$out" != *"is a list"* ]] && pass "Props and States tables lint clean" || fail "tables clean" "$out"
+mutate_in "$toggle" "a prop not written as code"          expect_err 'prop "disabled" should be its name as written in code, in backticks' 's/^| `disabled` |/| disabled |/'
+mutate_in "$toggle" "required must be yes or no"          expect_err "prop \`on\`'s \"required\" should be yes or no (got \"maybe\")" 's/^| `on` | boolean | yes |/| `on` | boolean | maybe |/'
+mutate_in "$toggle" "a prop with no type"                 expect_err 'prop `onChange` has no type'           's/^| `onChange` | (on: boolean) => void |/| `onChange` | |/'
+mutate_in "$toggle" "  ...is only a warning in a draft"   expect_warn 'prop `onChange` has no type'          's/^status: approved/status: draft/; s/^| `onChange` | (on: boolean) => void |/| `onChange` | |/'
+mutate_in "$toggle" "a prop driving a state that isn't there" expect_err "drives state \"off\", which isn't in States" 's/| → state on |/| → state off |/'
+mutate_in "$toggle" "a state named like code"             expect_err 'state "Pressed" should be a plain lowercase name' 's/^| pressed |/| Pressed |/'
+mutate_in "$toggle" "a state that depends on a missing prop" expect_err 'state on depends on `checked`, which isn'"'"'t in Props' 's/| `on` is true |/| `checked` is true |/'
+mutate_in "$toggle" "a duplicate prop"                    expect_err 'duplicate key "on" in Props'           's/^| `disabled` | boolean | no | false | → state disabled |/| `on` | boolean | no | false | |/'
+mutate_in "$toggle" "wrong columns"                       expect_err "States's columns should be | state | when | looks like |" 's/^| state | when | looks like |/| state | looks like |/'
+mutate_in "$toggle" "a line outside the table"            expect_err "Props has a line outside its table"    's/^|---|---|---|---|---|$/&\n- also: not pressable/'
+mutate_in "$toggle" "notes that read like a rule warn"    expect_warn "prop \`on\`'s notes read like a rule"  's/| → state on |/| → state on; must be set |/'
+mutate_in "$toggle" "a list in Props warns, pointing at /spec-migrate" expect_warn "Props is a list: write it as a table, | prop | type | required | default | notes | (/spec-migrate Toggle converts it)" '/^| `\|^| prop\|^|---|---|---|---|---|$/d; s/^## Props$/## Props\n- on (required), onChange, disabled/'
+mutate_in "$toggle" "the old Props / States section warns" expect_warn '"## Props / States" is the old format: split it into a ## Props table and a ## States table, and move guidelines into ## Rules (/spec-migrate Toggle converts it)' 's/^## Purpose$/## Props \/ States\n- on (required)\n\n## Purpose/'
+mutate_in "$toggle" "tokens in Props are checked"         expect_err 'unknown token $color.nope'             's/| → state disabled |/| → state disabled, $color.nope |/'
+rm "$toggle"; lint --fix >/dev/null
+button="$repo/specs/components/PrimaryButton.md"
+cp "$button" "$button.orig"
+sed -i 's/^## Must not$/## Props\n| prop | type | required | default | notes |\n|---|---|---|---|---|\n| `label` | string | yes | | |\n| `loading` | boolean | no | false | |\n\n## Must not/' "$button"
+mutate "a screen can set a component's props"         expect_ok   ""                                         's/\[\[PrimaryButton\]\]/[[PrimaryButton loading=true]]/'
+mutate "  ...but only ones it has"                     expect_err  'PrimaryButton has no prop "busy" (known: label, loading)' 's/\[\[PrimaryButton\]\]/[[PrimaryButton busy=true]]/'
+mv "$button.orig" "$button"
+mutate "a screen's States table lints clean"           expect_ok   ""                                         's/^## Rules$/## States\n| state | when | looks like |\n|---|---|---|\n| loading | fetching | skeleton; no [[PrimaryButton]] |\n\n## Rules/'
+mutate "  ...and its refs are still checked"           expect_err  "[[Ghost]] has no spec"                    's/^## Rules$/## States\n| state | when | looks like |\n|---|---|---|\n| loading | fetching | skeleton; no [[Ghost]] |\n\n## Rules/'
+mutate "a screen's States list warns"                  expect_warn "States is a list: write it as a table, | state | when | looks like | (/spec-migrate AlbumDetail converts it)" 's/^## Rules$/## States\n- loading: skeleton\n\n## Rules/'
 
 echo "flows, models, apis"
 cat > "$repo/specs/models/Album.md" <<'EOF'
@@ -280,9 +337,6 @@ out="$(hook pre "$(edit_json "$repo/specs/components/PrimaryButton.md" "The Prim
 [[ "$out" == *'"ask"'* && "$out" == *"Relied on by AlbumDetail (approved), Checkout (approved, through AlbumDetail); see node scripts/spec-lint.mjs --refs PrimaryButton."* ]] \
   && pass "pre: a protected change names who relies on the spec" || fail "pre: relied on by" "$out"
 flow="$repo/specs/flows/Checkout.md"
-mutate_in() { # mutate_in <file> <name> <expect_err|expect_warn> <substring> <sed expr>
-  cp "$1" "$1.bak"; sed -i "$5" "$1"; "$3" "$2" "$4"; mv "$1.bak" "$1"
-}
 mutate_in "$flow" "flow: unknown screen"     expect_err "[[screen:Nope]] has no spec"        's/screen:AlbumDetail/screen:Nope/'
 mutate_in "$flow" "flow: wrong kind of ref"  expect_err "[[model:GetAlbum]] has no spec"      's/\[\[api:GetAlbum\]\]/[[model:GetAlbum]]/'
 mutate_in "$flow" "flow: step that doesn't exist" expect_err "goes to step 7"              's/→ step 2/→ step 7/'

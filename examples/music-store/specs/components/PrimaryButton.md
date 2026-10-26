@@ -10,10 +10,22 @@ The single call-to-action on a screen.
 - default: filled $color.accent, white label
 - quiet: $color.accent outline and label, for secondary placement
 
-## Props / States
-- label (required), onPress, loading, disabled
-- loading: a spinner replaces the label; not pressable
-- disabled: 50% opacity; not pressable
+## Props
+| prop | type | required | default | notes |
+|---|---|---|---|---|
+| `label` | string | yes | | |
+| `onPress` | () => void | yes | | |
+| `loading` | boolean | no | false | → state loading |
+| `disabled` | boolean | no | false | → state disabled |
+
+## States
+| state | when | looks like |
+|---|---|---|
+| loading | `loading` is true | a spinner replaces the label |
+| disabled | `disabled` is true | 50% opacity |
+
+## Rules
+- R1: Not pressable while loading or disabled.
 
 ## Style
 - $radius.md corners, $space.md horizontal padding, $type.body label.
@@ -29,3 +41,4 @@ The single call-to-action on a screen.
 
 ## Decisions
 - 2026-10-21: Added the `loading` state for AlbumDetail's A1 (double-tap on Buy).
+- 2026-10-26: Moved Props / States into the Props and States tables; "not pressable" became R1.

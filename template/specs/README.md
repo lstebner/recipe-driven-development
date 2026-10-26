@@ -251,8 +251,10 @@ Let a listener see an album's details and release history, and buy it.
     - ?owned {copy.owned}                      → R1
 
 ## States
-- loading: skeleton of Body; no [[PrimaryButton]]
-- not-found: when [[api:GetAlbum#not_found]], show {copy.notFound}
+| state | when | looks like |
+|---|---|---|
+| loading | [[api:GetAlbum]] is in flight | skeleton of Body; no [[PrimaryButton]] |
+| not-found | [[api:GetAlbum#not_found]] | {copy.notFound} |
 
 ## Rules
 - R1: The buy button is hidden when the listener already owns the album; show {copy.owned} instead.
@@ -292,9 +294,23 @@ The single call-to-action on a screen.
 - default: filled $color.accent
 - quiet: outline only, for secondary placement
 
-## Props / States
-- label (required), onPress, loading, disabled
-- loading: spinner replaces label; not pressable
+## Props
+| prop | type | required | default | notes |
+|---|---|---|---|---|
+| `label` | string | yes | | |
+| `onPress` | () => void | yes | | |
+| `loading` | boolean | no | false | → state loading |
+| `disabled` | boolean | no | false | → state disabled |
+
+## States
+| state | when | looks like |
+|---|---|---|
+| loading | `loading` is true | a spinner replaces the label |
+| disabled | `disabled` is true | 50% opacity |
+| pressed | while held | a darker fill |
+
+## Rules
+- R1: Not pressable while loading or disabled.
 
 ## Must not
 - Never fetch data or navigate on its own; the screen decides what a press does.
@@ -310,6 +326,24 @@ The single call-to-action on a screen.
 
 Required section: **Purpose**. A component can compose other shared components: give it a
 `## Layout` section, the same as a screen.
+
+**Props, States and Rules** keep three different things apart:
+
+- **Props** are the component's inputs, its contract with whatever renders it: one row each,
+  named in backticks exactly as in code, with a type, `yes` or `no` for required, and the default.
+- **States** are the conditions it can be in and what it looks like in each: one row each, named
+  in plain lowercase. "when" says what puts it there: a prop in backticks, or an event ("while
+  held").
+- **Rules** are what it must or must never do. They get IDs, tests and a row in its report, like
+  a screen's.
+
+A prop that drives a state says so in its notes (`→ state loading`), and the state's "when"
+names the prop, so it's clear the two lines are one thing. Lint checks each name on both ends,
+and that a screen's `[[PrimaryButton loading=true]]` only sets props the component has. Notes
+that read like a rule ("must", "never") get a warning: move them to Rules or Must not.
+
+A spec written before these tables has a single `## Props / States` list. Lint warns about it,
+and `/spec-migrate <Name>` converts it (see [Migrating to the tables](#migrating-to-the-tables)).
 
 ## Flow spec
 
@@ -567,6 +601,21 @@ match the tree.)
 
 The symbols are optional niceties. Type `>=`, `->` and `,` instead of `≥`, `→` and `·` if that's easier.
 
+## Migrating to the tables
+
+Older specs keep Props and States as lists, a component's under one `## Props / States`
+heading. Lint warns about each, and they keep working. To convert them, run `/spec-migrate`
+(everything lint warns about) or `/spec-migrate <Name>`. Claude:
+
+- fills in each prop's type, required and default from the component's source, and marks a
+  guess where the code doesn't say;
+- turns behaviour hidden in the old list ("not pressable") into Rules, with new IDs;
+- converts a draft directly, and an approved or implemented spec through an amendment, so you
+  accept each at the prompt;
+- leaves **verified** specs alone unless you say otherwise. Converting one changes its
+  fingerprint, so it goes back to `implemented` and needs `/spec-verify` again. Claude lists them
+  and asks which to include.
+
 ## Shared vs one-off
 
 - If something appears in more than one screen, or should look identical everywhere, make it **shared**.
@@ -669,5 +718,6 @@ prompt and a verified spec stays verified.
 - `node scripts/spec-lint.mjs --version`: the version of the kit this repo has; see the kit's CHANGELOG.md for what each one changed.
 - `/spec-new [kind] <Name>[: what it's for]`: add a spec to the outline and draft it; with no arguments, draft everything in the outline that has no spec.
 - `/spec-review <Name>`: Claude critiques a spec before it's built.
+- `/spec-migrate [Name]`: Claude converts specs written before the Props and States tables (see [Migrating to the tables](#migrating-to-the-tables)).
 - `/spec-verify <Name>`: Claude checks the implementation rule by rule, writes `_reports/<Name>.md`, and then asks you to taste it.
 - "deprecate <Name>, <Other> replaces it": Claude marks it `deprecated`, and you confirm the prompt.
