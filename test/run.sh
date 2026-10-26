@@ -721,6 +721,23 @@ for i in 1 2 3; do "$kit/install.sh" "$gi" >/dev/null; done
 [[ "$(grep -c "last-seen" "$gi/.gitignore")" == 1 ]] && pass "  ...in a large .gitignore too" || fail "gitignore dup, large file" "$(grep -c last-seen "$gi/.gitignore") entries"
 rm -rf "$gi"
 
+echo "release script"
+rel="$(mktemp -d)"; mkdir -p "$rel/template/scripts"
+cp "$kit/template/scripts/spec-lint.mjs" "$rel/template/scripts/"
+printf '# Changelog\n\nIntro.\n\n## Unreleased\n\n- New thing.\n- Fixed thing.\n\n## 0.1.0 (2026-10-25)\n\n- First.\n' > "$rel/CHANGELOG.md"
+release() { node "$kit/.github/scripts/release.mjs" --root "$rel" "$@" 2>&1; }
+was="$(release current)"
+out="$(release prepare 0.0.1 --date 2026-11-01)"; [[ $? -eq 1 && "$out" == *"isn't newer than the current version"* ]] && pass "release: refuses a version that isn't newer" || fail "release: older" "$out"
+out="$(release prepare sideways)"; [[ $? -eq 1 && "$out" == *"expected patch, minor, major or X.Y.Z"* ]] && pass "release: refuses an unknown bump" || fail "release: bad bump" "$out"
+out="$(release prepare minor --date 2026-11-01)"; next="$(node -e 'const [a,b]=process.argv[1].split("."); console.log(`${a}.${+b+1}.0`)' "$was")"
+[[ "$out" == "$next" && "$(release current)" == "$next" ]] && pass "release: prepare minor bumps VERSION ($was → $next)" || fail "release: bump" "$out"
+expected="$(printf '# Changelog\n\nIntro.\n\n## Unreleased\n\n## %s (2026-11-01)\n\n- New thing.\n- Fixed thing.\n\n## 0.1.0 (2026-10-25)\n\n- First.' "$next")"
+[[ "$(cat "$rel/CHANGELOG.md")" == "$expected" ]] && pass "  ...and moves Unreleased under the version, leaving an empty Unreleased" || fail "release: changelog" "$(cat "$rel/CHANGELOG.md")"
+[[ "$(release notes "$next")" == $'- New thing.\n- Fixed thing.' && "$(release notes 0.1.0)" == "- First." ]] && pass "release: notes prints one version's entries" || fail "release: notes" "$(release notes "$next")"
+out="$(release prepare patch)"; [[ $? -eq 1 && "$out" == *"Unreleased in CHANGELOG.md is empty"* ]] && pass "release: refuses when there's nothing to release" || fail "release: empty" "$out"
+out="$(release notes 9.9.9)"; [[ $? -eq 1 && "$out" == *"no entries for 9.9.9"* ]] && pass "release: notes fails for a version that isn't there" || fail "release: no notes" "$out"
+rm -rf "$rel"
+
 echo "example"
 example="$kit/examples/music-store"
 out="$(node "$kit/template/scripts/spec-lint.mjs" --root "$example" 2>&1)" && pass "examples/music-store lints clean" || fail "example lint" "$out"

@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # release.yml starts it on the release PR's branch: a PR opened with the workflow token doesn't trigger it.
+  workflow_dispatch:
 
 jobs:
   test:
