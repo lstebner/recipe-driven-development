@@ -62,6 +62,15 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   isn't taken for a comment, and a list can also be written one `- item` per line, which lint
   used to read as empty.
 
+- `node scripts/spec-lint.mjs --map [Name]` writes `specs/.map.html`, a page you open in your browser.
+  - **Layouts** draws each screen's (and component's) Layout as nested boxes. Shared components
+    are coloured by status, one-offs and missing specs are marked, and copy is filled in. You can
+    flip `?conditions` and switch between wide and narrow.
+  - **Graph** shows every spec and what it relies on. Hover or click a spec to light up
+    everything it reaches, both ways.
+
+  Install adds `specs/.map.html` to `.gitignore`.
+
 ## 0.2.0 (2026-10-26)
 
 - Releases are made with two workflows: **Create a release** opens the release PR, and merging

@@ -91,16 +91,19 @@ fs.writeFileSync(file, JSON.stringify(settings, null, 2) + "\n")
 console.log(`  ${added || spinner ? "merge  " : "keep   "} .claude/settings.json${[added && "hooks", spinner && "spinner verbs"].filter(Boolean).map((s) => ` (${s})`).join("")}`)
 EOF
 
-# .gitignore: what Claude last saw of each spec is per checkout, so a teammate's changes show up after a pull.
+# .gitignore: what Claude last saw of each spec is per checkout, so a teammate's changes show up after a pull; the
+# spec map is generated on demand, so it would only ever be stale in git.
 # Compare lines without CR line endings, trailing whitespace or a leading "/", so an existing entry is recognised.
 # One awk reading the file itself, not a pipeline: under pipefail, a grep -q that stops early fails the pipe.
-if ! awk '{ sub(/\r$/, ""); sub(/[ \t]+$/, ""); sub(/^\//, "") } $0 == "specs/.last-seen.json" { found = 1 } END { exit !found }' \
-  "$target/.gitignore" 2>/dev/null; then
-  { [[ -s "$target/.gitignore" && -n "$(tail -c1 "$target/.gitignore")" ]] && echo; echo "specs/.last-seen.json"; } >> "$target/.gitignore"
-  echo "  append  .gitignore (specs/.last-seen.json)"
-else
-  echo "  keep    .gitignore"
-fi
+ignored=()
+for entry in specs/.last-seen.json specs/.map.html; do
+  if ! awk -v entry="$entry" '{ sub(/\r$/, ""); sub(/[ \t]+$/, ""); sub(/^\//, "") } $0 == entry { found = 1 } END { exit !found }' \
+    "$target/.gitignore" 2>/dev/null; then
+    { [[ -s "$target/.gitignore" && -n "$(tail -c1 "$target/.gitignore")" ]] && echo; echo "$entry"; } >> "$target/.gitignore"
+    ignored+=("$entry")
+  fi
+done
+if (( ${#ignored[@]} )); then echo "  append  .gitignore (${ignored[*]})"; else echo "  keep    .gitignore"; fi
 
 # CLAUDE.md: append the rules block once. --update replaces it in place, including a block
 # written before the rename (marked spec-kit:start / spec-kit:end).

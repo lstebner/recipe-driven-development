@@ -714,6 +714,7 @@ prompt and a verified spec stays verified.
 - `node scripts/spec-lint.mjs --hash <Name>`: the spec's fingerprint, which `/spec-verify` stamps into its report.
 - `node scripts/spec-lint.mjs --refs <Name>[#member]`: every live spec that relies on it, directly or through other specs, with its status and where the link is.
 - `node scripts/spec-lint.mjs --components <Name>`: the fingerprint of each component the spec is built from, for the report's `Components:` line.
+- `node scripts/spec-lint.mjs --map [Name]`: writes `specs/.map.html`, a page to open in your browser. It draws each screen's Layout as nested boxes and graphs every spec against what it relies on, coloured by status. Click a spec to see its rules and who relies on it.
 - `node scripts/spec-lint.mjs --version`: the version of the kit this repo has; see the kit's CHANGELOG.md for what each one changed.
 - `/spec-new [kind] <Name>[: what it's for]`: add a spec to the outline and draft it; with no arguments, draft everything in the outline that has no spec.
 - `/spec-review <Name>`: Claude critiques a spec before it's built.
