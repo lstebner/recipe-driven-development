@@ -57,11 +57,14 @@ Offer to verify its `replaced_by` instead.
      gave it and what came back. Then check that each spec in Used by shows the same answer for
      the same input (e.g. AlbumDetail, GetAlbum and CreateOrder agree for a listener who owns the
      album, one who doesn't, and one whose order was refunded).
-6. Get the fingerprint with `node scripts/spec-lint.mjs --hash <Name>`, then write
-   `specs/_reports/<Name>.md` (overwrite it) and show the user the summary table. The fingerprint
-   covers the decision of every policy the spec relies on, through other policies too, so a
-   verified spec whose policy has changed since its report goes stale: re-verify it against the
-   policy as it is now.
+6. Get the fingerprint with `node scripts/spec-lint.mjs --hash <Name>` and the components line with
+   `node scripts/spec-lint.mjs --components <Name>`, then write `specs/_reports/<Name>.md`
+   (overwrite it) and show the user the summary table. The fingerprint covers the decision of
+   every policy the spec relies on, through other policies too, so a verified spec whose policy
+   has changed since its report goes stale: re-verify it against the policy as it is now. The
+   components line records each shared component the spec is built from as you checked it. When
+   one changes later, lint warns that the spec needs auditing. If you're here because of that
+   warning, check what the component's change means for this spec in particular.
 7. **Status.** If the spec was `approved`, you may set `implemented` once it's built. If every
    rule is ✅ or 👤, no row is ❌ or ⚠️ and lint is clean, propose the taste test:
    - Tell the user in 2–5 bullets **what to try** to taste it themselves: every 👤 row first,
@@ -75,6 +78,7 @@ Offer to verify its `replaced_by` instead.
 ```markdown
 # <Name>: verification report
 Date: YYYY-MM-DD · Spec: 3f9a1c0b7e2d · Status: implemented · Lint: clean
+Components: ArtistBadge 8c41d07e9a2f, PrimaryButton 5e0b3a9d1c76
 
 | rule | result | evidence |
 |---|---|---|
@@ -94,4 +98,6 @@ Date: YYYY-MM-DD · Spec: 3f9a1c0b7e2d · Status: implemented · Lint: clean
 
 Use one row per rule, with the rule ID alone in the first column, plus rows for the other checks
 that apply (Layout, Copy, Shared components, Schema, Contract, Errors, Paths). The hook reads this
-table: every rule needs a ✅ or 👤 row, and any ❌ or ⚠️ row blocks `verified`.
+table: every rule needs a ✅ or 👤 row, and any ❌ or ⚠️ row blocks `verified`. It also reads the
+`Components:` line, exactly as `--components` prints it (`none` if the spec uses no components),
+and refuses `verified` if it's missing or out of date.

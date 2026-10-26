@@ -448,9 +448,12 @@ echo "tasting"
 hash="$(lint --hash AlbumDetail)"
 [[ "$hash" =~ ^[0-9a-f]{12}$ ]] && pass "--hash prints a fingerprint" || fail "--hash" "$hash"
 report="$repo/specs/_reports/AlbumDetail.md"
-write_report() { # write_report <hash> <row>...
+comps="$(lint --components AlbumDetail)"
+[[ "$comps" =~ ^ArtistBadge\ [0-9a-f]{12},\ PrimaryButton\ [0-9a-f]{12}$ ]] && pass "--components prints the fingerprint of each component a spec uses" || fail "--components" "$comps"
+write_report() { # write_report <hash> <row>...: with a "Components:" line of $comps, unless it's empty
   local h="$1"; shift
-  { echo "# AlbumDetail: verification report"; echo "Date: 2026-10-23 · Spec: $h · Status: implemented · Lint: clean"; echo
+  { echo "# AlbumDetail: verification report"; echo "Date: 2026-10-23 · Spec: $h · Status: implemented · Lint: clean"
+    [[ -n "$comps" ]] && echo "Components: $comps"; echo
     echo "| rule | result | evidence |"; echo "|---|---|---|"; printf '%s\n' "$@"; } > "$report"
 }
 to_verified() { hook pre "$(edit_json "$screen" "status: approved" "status: verified")"; }
@@ -465,6 +468,18 @@ out="$(to_verified)"
 write_report "000000000000" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
 out="$(to_verified)"
 [[ "$out" == *'"deny"'* && "$out" == *"older version"* ]] && pass "pre: a stale report is refused" || fail "pre: stale" "$out"
+good="$comps"; button="$repo/specs/components/PrimaryButton.md"
+comps=""; write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
+out="$(to_verified)"
+[[ "$out" == *'"deny"'* && "$out" == *'has no \"Components:\" line (get it with node scripts/spec-lint.mjs --components AlbumDetail)'* ]] \
+  && pass "pre: a report that doesn't record its components is refused" || fail "pre: no components line" "$out"
+comps="${good#*, }"; write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
+out="$(to_verified)"
+[[ "$out" == *'"deny"'* && "$out" == *"doesn't record ArtistBadge"* ]] && pass "  ...and so is one that leaves a component out" || fail "pre: component left out" "$out"
+comps="${good%,*}, PrimaryButton 000000000000"; write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
+out="$(to_verified)"
+[[ "$out" == *'"deny"'* && "$out" == *"written against an older PrimaryButton"* ]] && pass "  ...and one written against an older component" || fail "pre: old component" "$out"
+comps="$good"
 write_report "$hash" "| R1 | ✅ | test |" "| AlbumDetail.R2 | 👤 | needs a real device |" "| Layout | 👤 | visual |"
 out="$(to_verified)"
 [[ "$out" == *'"ask"'* && "$out" == *"1/2"* && "$out" == *"leaves AlbumDetail.R2, Layout for you to check by hand"* ]] \
@@ -483,6 +498,29 @@ mv "$screen.bak" "$screen"
 write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ❌ | regressed |"
 expect_err "verified with a failing report is a lint error" "marks AlbumDetail.R2 as ❌"
 write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
+
+echo "component audit"
+audit_warning="verified against an older PrimaryButton than there is now; audit whether the change affects AlbumDetail, then re-run /spec-verify AlbumDetail"
+cp "$button" "$button.bak"
+printf '\n## Decisions\n- 2026-10-26: Kept it to one size.\n' >> "$button"
+out="$(lint)"; [[ $? -eq 0 && "$out" != *"verified against an older"* ]] && pass "a component's Decisions don't call for an audit" || fail "audit: decisions" "$out"
+json="$(edit_json "$button" "- compact: small" $'- compact: small\n- destructive: for deleting things')"
+hook pre "$json" >/dev/null; sed -i 's/^- compact: small$/- compact: small\n- destructive: for deleting things/' "$button"
+out="$(hook post "$json")"; code=$?
+[[ $code -eq 0 && "$out" == *"Your change to PrimaryButton reaches AlbumDetail, verified against the old version"* ]] \
+  && pass "post: Claude's change to a component names the verified specs to audit" || fail "post: audit note" "$out"
+out="$(lint)"; [[ $? -eq 0 && "$out" == *"$audit_warning"* ]] \
+  && pass "a changed component makes lint warn, not fail, on the verified specs made from it" || fail "audit: warning" "$out"
+comps="$(lint --components AlbumDetail)"; write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
+out="$(lint)"; [[ $? -eq 0 && "$out" != *"verified against an older"* ]] && pass "  ...until the report records it again" || fail "audit: cleared" "$out"
+comps=""; write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
+out="$(lint)"; [[ $? -eq 0 && "$out" != *"verified against an older"* ]] && pass "a report from before components were recorded isn't audited" || fail "audit: old report" "$out"
+mv "$button.bak" "$button"; comps="$good"; write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
+printf -- '---\ncomponent: Card\nstatus: draft\nuses: [PrimaryButton]\n---\n## Purpose\nA card.\n\n## Layout\n- [[PrimaryButton]]\n' > "$repo/specs/components/Card.md"
+printf -- '---\nscreen: Shelf\nstatus: draft\nuses: [Card]\n---\n## Goal\nA shelf.\n\n## Layout\n- [[Card]]\n\n## Rules\n- R1: Shows cards.\n' > "$repo/specs/screens/Shelf.md"
+out="$(lint --components Shelf)"
+[[ "$out" =~ ^Card\ [0-9a-f]{12},\ PrimaryButton\ [0-9a-f]{12}$ ]] && pass "--components follows components made of other components" || fail "--components nested" "$out"
+rm "$repo/specs/components/Card.md" "$repo/specs/screens/Shelf.md"; lint --fix >/dev/null
 
 echo "deprecation"
 api="$repo/specs/apis/GetAlbum.md"
@@ -702,6 +740,11 @@ out="$(seen SessionStart)"
 [[ "$out" == *'"hookEventName":"SessionStart"'* && "$out" == *"AlbumDetail changed after it was built"*"set it to implemented"* ]] \
   && pass "seen: a hand edit to a verified spec sends it back to be re-verified" || fail "seen: hand edit" "$out"
 mv "$screen.bak" "$screen"; seen >/dev/null
+cp "$button" "$button.bak"; sed -i 's/^- compact: small$/- compact: small\n- destructive: for deleting things/' "$button"
+out="$(seen)"
+[[ "$out" == *"PrimaryButton changed since you last read it"*"It's part of AlbumDetail (verified): offer to audit each for whether the change affects it. Lint warns about the verified ones"* ]] \
+  && pass "seen: a hand edit to a component names the built specs to audit" || fail "seen: component" "$out"
+mv "$button.bak" "$button"; seen >/dev/null
 own_edit() { # own_edit <file> <sed expr> [id]: what Claude's Edit does, hooks and all
   local json; json="$(node -e 'console.log(JSON.stringify({ tool_name: "Edit", tool_use_id: process.argv[3] || undefined, tool_input: { file_path: process.argv[1], old_string: "x", new_string: "y" } }))' "$1" "$2" "${3:-}")"
   hook pre "$json" >/dev/null; sed -i "$2" "$1"; hook post "$json" >/dev/null

@@ -1,5 +1,6 @@
 # Album: verification report
 Date: 2026-10-22 · Spec: 4bdb9c63c729 · Status: implemented · Lint: clean
+Components: none
 
 | rule | result | evidence |
 |---|---|---|

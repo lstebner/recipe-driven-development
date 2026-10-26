@@ -105,6 +105,11 @@ also covers the decision of every [policy](#policy-spec) the spec relies on, so 
 policy's Inputs, Output, Rules or Must not sends every verified spec that relies on it back to be
 re-verified too. Rewording its Purpose or adding Examples doesn't.
 
+Components work differently: the report records the fingerprint of each shared component the
+spec is built from (a `Components:` line, from `node scripts/spec-lint.mjs --components <Name>`),
+and a change to one asks for an audit rather than sending the spec back. See
+[Changing a spec](#changing-a-spec).
+
 ### Deprecating (`deprecated`)
 
 Recipes come off the menu: a feature is dropped, or something newer replaces it. Deleting the
@@ -173,11 +178,52 @@ change is still reported.
 | anything → `deprecated` | takes it off the outline and stops building on it |
 | anything → `verified`, by hand | leaves it to lint to check the report, and says so if it fails |
 | back to `draft` | stops building on it until it's approved again |
+| the content of a component | as above, and names the built specs made from it so they can be audited ([below](#changing-a-spec)) |
 
 A spec whose status and content both changed gets a note for each. Claude only offers: it doesn't
 start building or verifying because a status moved. The first run just records what's there, and
 if the record can't be read, Claude says so and starts it afresh. If you run two sessions at
 once, whichever sees a change first is the one that's told.
+
+### Changing a spec
+
+When something that's already approved or built needs to change (a new feature for a
+component, a rule that turned out wrong), change the recipe first, then the dish:
+
+1. **Decide what kind of change it is.** For a component, see [Shared vs one-off](#shared-vs-one-off):
+   if only props or appearance differ, it's a variant of the existing component; if the
+   structure differs, it's a new component. If the change is to a decision several specs share,
+   it belongs in a [policy](#policy-spec).
+2. **Change the spec.** Any of these works:
+   - **Ask Claude** ("add a destructive variant to PrimaryButton"). The spec is protected, so
+     Claude writes it up as an [amendment](#amendments) and applies it, and you accept it at the
+     prompt. Its Affects line lists the specs the change reaches.
+   - **Edit it yourself.** Claude is told about it on your next message ([above](#noticing-your-changes)).
+   - **Set it back to `draft`** for a bigger rework, edit freely (`/spec-review` helps), and
+     approve it again.
+
+   New rules get the next number. Don't renumber: tests and reports refer to rules by ID.
+3. **Build it.** A `verified` spec whose content changed goes back to `implemented`, since its
+   report no longer matches. Claude builds the change and tags new tests with the new rule IDs.
+4. **Taste it** with `/spec-verify`, as for anything new.
+
+**Changing a component.** A component's change can reach every spec made from it, directly or
+through another component, but most changes (a new variant, a new prop) don't affect most of
+those specs. So they aren't sent back to be re-verified; they're flagged for an audit instead:
+
+- Each report records the fingerprint of every component its spec is built from (the
+  `Components:` line). Lint **warns** on a verified spec when one of those components has
+  changed since: "verified against an older PrimaryButton than there is now". A component's
+  Used by, Open amendments and Decisions aren't part of its fingerprint, so they don't count.
+- When the change is yours, the hook tells Claude which built specs use the component. When it's
+  Claude's, it's told which verified specs it has left behind. Either way, Claude tells you and
+  offers to audit each one.
+- **Auditing** means checking whether the change affects that spec. Where it does, that's an
+  amendment to the spec, or a bug to fix. Either way, re-running `/spec-verify` on it records the
+  component as it is now and clears the warning.
+
+Reports written before the `Components:` line existed aren't audited. They get the line the next
+time the spec is verified.
 
 ## Screen spec
 
@@ -616,6 +662,7 @@ prompt and a verified spec stays verified.
 - `node scripts/spec-lint.mjs --scaffold`: create a draft for every outline entry without a spec.
 - `node scripts/spec-lint.mjs --hash <Name>`: the spec's fingerprint, which `/spec-verify` stamps into its report.
 - `node scripts/spec-lint.mjs --refs <Name>[#member]`: every live spec that relies on it, directly or through other specs, with its status and where the link is.
+- `node scripts/spec-lint.mjs --components <Name>`: the fingerprint of each component the spec is built from, for the report's `Components:` line.
 - `node scripts/spec-lint.mjs --version`: the version of the kit this repo has; see the kit's CHANGELOG.md for what each one changed.
 - `/spec-new [kind] <Name>[: what it's for]`: add a spec to the outline and draft it; with no arguments, draft everything in the outline that has no spec.
 - `/spec-review <Name>`: Claude critiques a spec before it's built.

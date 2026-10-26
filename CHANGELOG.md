@@ -34,6 +34,15 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   while building and say when a revisit condition has been met. Run `install.sh --update` to get
   both.
 
+- A change to a shared component flags every spec made from it for an audit. `/spec-verify`
+  records the fingerprint of each component a spec uses on a new `Components:` line in its report
+  (`node scripts/spec-lint.mjs --components <Name>`), and lint warns, without failing, when one
+  has changed since. Claude names the specs to audit when it changes a component, and when the
+  change-tracking hook sees you change one. Marking a spec verified now needs the line. Existing
+  reports don't have it and aren't audited until they're re-verified. `specs/README.md` has a new
+  section, "Changing a spec", on how to evolve something that's already approved or built.
+  Run `install.sh --update` for the new skill and rules.
+
 ## 0.2.0 (2026-10-26)
 
 - Releases are made with two workflows: **Create a release** opens the release PR, and merging
