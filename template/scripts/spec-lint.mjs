@@ -77,21 +77,71 @@ const blank = (s) => s.replace(/[^\n]/g, "")
 const stripNoise = (text) =>
   text.replace(/<!--[\s\S]*?-->/g, blank).replace(/^```[\s\S]*?^```/gm, blank)
 
-// YAML lets any value be quoted (status: "approved"); the quotes aren't part of it.
-const unquote = (s) => s.replace(/^(["'])(.*)\1$/, "$2")
+// YAML lets any value be quoted (status: "approved"); the quotes aren't part of it. In single quotes, '' is a '.
+const unquote = (s) => {
+  const match = /^(["'])(.*)\1$/.exec(s)
+  return !match ? s : match[1] === "'" ? match[2].replace(/''/g, "'") : match[2]
+}
+
+// Frontmatter is the small part of YAML that specs use: `key: value`, `key: [a, b]`, and a list written one
+// `- item` per line. It's read here rather than with a YAML library so spec-lint.mjs stays one file with no
+// dependencies. scanValue walks a line or value, calling onChar for each character outside quotes with the
+// bracket depth there; returning false stops it. As in YAML, a quote only opens where a value or list item
+// starts, so the apostrophe in "it's" doesn't.
+const scanValue = (text, onChar) => {
+  let quote = null
+  let depth = 0
+  let prev = ""
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (quote) {
+      if (ch === quote) quote = null
+      continue
+    }
+    if ((ch === '"' || ch === "'") && (prev === "" || ":[,-".includes(prev))) quote = ch
+    else if ("([{".includes(ch)) depth++
+    else if (")]}".includes(ch)) depth = Math.max(0, depth - 1)
+    if (onChar(ch, i, depth) === false) return i
+    if (!/\s/.test(ch)) prev = ch
+  }
+  return text.length
+}
+// A comment is a # after whitespace (or at the start), outside quotes.
+const stripComment = (line) => line.slice(0, scanValue(line, (ch, i) => !(ch === "#" && (i === 0 || /\s/.test(line[i - 1]))))).trimEnd()
+// The items of a [a, b] list, split on commas that aren't inside quotes or brackets, so that both
+// "apps/(shop,cart)/page.tsx" and apps/web/src/app/albums/[id]/page.tsx stay one path each.
+const listItems = (value) => {
+  const inner = value.replace(/^\[/, "").replace(/\]$/, "")
+  const items = []
+  let start = 0
+  scanValue(inner, (ch, i, depth) => {
+    if (ch === "," && depth === 0) {
+      items.push(inner.slice(start, i))
+      start = i + 1
+    }
+  })
+  items.push(inner.slice(start))
+  return items.map((s) => unquote(s.trim())).filter(Boolean)
+}
 
 const parseFrontmatter = (text) => {
   const match = /^---\n([\s\S]*?)\n---\n/.exec(text)
   if (!match) return { data: null, lines: 0 }
   const data = {}
+  // The key whose value was left empty, which "- item" lines underneath add to.
+  let listKey = null
   for (const raw of match[1].split("\n")) {
-    const line = raw.replace(/\s+#.*$/, "").trim()
+    const line = stripComment(raw).trim()
+    const item = /^-\s+(.*)$/.exec(line)
+    if (item && listKey) {
+      data[listKey] = [...asList(data[listKey]), unquote(item[1].trim())]
+      continue
+    }
     const kv = /^([\w-]+):\s*(.*)$/.exec(line)
+    listKey = kv && kv[2].trim() === "" ? kv[1] : null
     if (!kv) continue
     const value = kv[2].trim()
-    data[kv[1]] = value.startsWith("[")
-      ? value.replace(/^\[|\]$/g, "").split(",").map((s) => unquote(s.trim())).filter(Boolean)
-      : unquote(value)
+    data[kv[1]] = value.startsWith("[") ? listItems(value) : unquote(value)
   }
   return { data, lines: match[0].split("\n").length - 1 }
 }

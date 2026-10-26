@@ -57,6 +57,11 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   `|` inside any table cell can be written `\|`. Run `install.sh --update` for the new
   templates, skill and rules.
 
+- Fix: frontmatter lists no longer split on a comma inside quotes or brackets, so
+  `source: ["apps/web/src/app/(shop,cart)/page.tsx"]` is one path, not two. A `#` inside quotes
+  isn't taken for a comment, and a list can also be written one `- item` per line, which lint
+  used to read as empty.
+
 ## 0.2.0 (2026-10-26)
 
 - Releases are made with two workflows: **Create a release** opens the release PR, and merging

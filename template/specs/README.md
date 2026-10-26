@@ -278,6 +278,10 @@ Let a listener see an album's details and release history, and buy it.
 
 Required sections: **Goal**, **Rules**. Everything else is optional: write only what matters.
 
+`source` (and `uses`, `local`, `replaced_by`) take one value or a list, written `[a, b]` or one
+`- item` per line. Quote a path with a comma in it, such as a route group:
+`source: ["apps/web/src/app/(shop,cart)/page.tsx"]`.
+
 ## Component spec
 
 ````markdown
