@@ -344,6 +344,8 @@ mapped="$(node -e '
     JSON.stringify(body.children[1].cond), body.children[1].rules.join(","), spec("Checkout").links.map((l) => l.to + (l.member ? "#" + l.member : "")).join(",")].join(" "))' "$map")"
 [[ "$mapped" == 'true true Header row stack {"not":true,"name":"owned"} R1 AlbumDetail,GetAlbum,GetAlbum#not_found,Album#price' ]] \
   && pass "  ...with each Layout as a tree (regions, responsive, conditions, rules) and every link" || fail "--map data" "$mapped"
+[[ ! -e "$repo/scripts/spec-map.html" ]] && grep -q '^const MAP_PAGE = "<!doctype html>' "$repo/scripts/spec-lint.mjs" && [[ "$(stat -c %a "$repo/scripts/spec-lint.mjs")" == 644 ]] \
+  && pass "  ...from the page install built into spec-lint.mjs, so a repo has one file to run" || fail "--map bundled" "$(ls -l "$repo/scripts")"
 out="$(lint --map Nope)"; [[ $? -eq 1 && "$out" == *'no spec named "Nope"'* ]] && pass "--map refuses an unknown spec" || fail "--map unknown" "$out"
 rm -f "$map"
 out="$(hook pre "$(edit_json "$repo/specs/components/PrimaryButton.md" "The PrimaryButton." "Anything.")")"

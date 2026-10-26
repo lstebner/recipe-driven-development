@@ -53,7 +53,19 @@ for f in tokens.md outline.md _templates/{screen,component,flow,model,api,policy
   copy "$tpl/specs/$f" "$target/specs/$f"
 done
 mkdir -p "$target"/specs/{screens,components,flows,models,apis,policies,_reports}
-copy "$tpl/scripts/spec-lint.mjs" "$target/scripts/spec-lint.mjs" yes
+# spec-lint.mjs goes in as one file, with the map page (scripts/spec-map.html in the kit) built into it.
+bundle="$(mktemp)"
+trap 'rm -f "$bundle"' EXIT
+chmod 644 "$bundle"
+node - "$tpl/scripts/spec-lint.mjs" "$tpl/scripts/spec-map.html" "$bundle" <<'EOF'
+const fs = require("fs")
+const [script, page, out] = process.argv.slice(2)
+const line = "\nconst MAP_PAGE = null\n"
+const text = fs.readFileSync(script, "utf8")
+if (text.split(line).length !== 2) throw new Error(`${script} has no "const MAP_PAGE = null" line to fill in`)
+fs.writeFileSync(out, text.replace(line, () => `\nconst MAP_PAGE = ${JSON.stringify(fs.readFileSync(page, "utf8"))}\n`))
+EOF
+copy "$bundle" "$target/scripts/spec-lint.mjs" yes
 for s in spec-new spec-review spec-verify spec-migrate; do
   copy "$tpl/.claude/skills/$s/SKILL.md" "$target/.claude/skills/$s/SKILL.md" yes
 done

@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spec map</title>
+<!-- The page spec-lint.mjs --map writes to specs/.map.html. It fills the "data" script below with every spec as JSON
+     (see mapData), and the script draws everything from that. install.sh builds this file into spec-lint.mjs. -->
+<style>
+:root {
+  --bg: #f7f6f3; --panel: #ffffff; --ink: #1f2328; --muted: #6a6f76; --line: #d9d6cf; --soft: #efede8;
+  --draft: #8a8f98; --approved: #2f6fdb; --implemented: #c27a0e; --verified: #1f8f4e; --deprecated: #c8433a;
+  --accent: #2f6fdb; --edge: #b9b5ac; --off: repeating-linear-gradient(135deg, transparent 0 6px, rgba(0,0,0,.04) 6px 12px);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16171a; --panel: #1e2024; --ink: #e6e6e3; --muted: #9a9ea5; --line: #34373d; --soft: #26282d;
+    --draft: #8d929b; --approved: #6b9cf0; --implemented: #e0a040; --verified: #4cc27f; --deprecated: #ec6d63;
+    --accent: #6b9cf0; --edge: #4a4e56; --off: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,.04) 6px 12px);
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+button { font: inherit; color: inherit; }
+header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+header h1 { font-size: 16px; margin: 0; }
+header h1 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.tabs, .filters { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs button, .filters button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 11px; cursor: pointer; }
+.tabs button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.filters button.hidden { opacity: .4; text-decoration: line-through; }
+.filters .dot { margin-right: 5px; }
+header input { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 4px 9px; min-width: 0; width: 160px; }
+main { padding: 16px; }
+body.drawer-open { margin-right: min(440px, 100vw); }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 22px 0 10px; }
+h2:first-child { margin-top: 4px; }
+h4 { margin: 12px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 14px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.card.sel { outline: 2px solid var(--accent); }
+.head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.head .name { font-weight: 600; font-size: 15px; background: none; border: 0; padding: 0; cursor: pointer; }
+.kind { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+.pill { font-size: 11px; border-radius: 999px; padding: 0 8px; color: #fff; background: var(--s); }
+.badge { font-size: 11px; border-radius: 4px; padding: 0 6px; background: var(--soft); color: var(--muted); }
+.badge.bad { background: var(--deprecated); color: #fff; }
+.about { color: var(--muted); margin: 6px 0 8px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--s); flex: none; }
+.s-draft { --s: var(--draft); } .s-approved { --s: var(--approved); } .s-implemented { --s: var(--implemented); }
+.s-verified { --s: var(--verified); } .s-deprecated { --s: var(--deprecated); } .s-missing { --s: var(--deprecated); }
+.controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; font-size: 12px; }
+.controls button { border: 1px solid var(--line); background: var(--soft); border-radius: 6px; padding: 1px 8px; cursor: pointer; }
+.controls button b { font-weight: 600; }
+.frame { border: 2px solid var(--line); border-radius: 12px; padding: 8px; background: var(--bg); }
+.frame.narrow { max-width: 260px; margin: 0 auto; }
+.kids { display: flex; gap: 6px; }
+.kids.stack { flex-direction: column; } .kids.row { flex-direction: row; } .kids.row > .node { flex: 1 1 0; min-width: 0; }
+.node { border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; background: var(--panel); }
+.node.group { border-style: dashed; background: transparent; }
+.node.group > .line { margin-bottom: 5px; }
+.node.off { background: var(--off); opacity: .45; }
+.line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+.content .chip { margin: 1px 0; }
+.meta { margin-left: auto; display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.cond, .rule, .resp { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border-radius: 4px; padding: 0 4px; }
+.cond { background: #f2e3b8; color: #6b4e00; } .rule { background: var(--soft); color: var(--muted); cursor: help; } .resp { color: var(--muted); }
+@media (prefers-color-scheme: dark) { .cond { background: #4a3d16; color: #f2d47c; } }
+.chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-left: 3px solid var(--s); background: var(--panel); border-radius: 5px; padding: 0 6px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.chip:hover { border-color: var(--s); }
+.chip.local { border-style: dashed; border-left-width: 1px; color: var(--muted); cursor: default; }
+.chip.missing { border-style: dashed; color: var(--deprecated); cursor: help; }
+.chip.dep { text-decoration: line-through; }
+.chip small { color: var(--muted); }
+.copy { color: var(--ink); font-style: italic; }
+.copy.missing { color: var(--deprecated); }
+.token, code { font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+ul.plain { list-style: none; padding: 0; margin: 0; }
+ul.plain li { padding: 3px 0; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+ul.rules li { display: grid; grid-template-columns: 30px 1fr; flex-wrap: nowrap; }
+.steps li.branch { padding-left: 22px; color: var(--muted); }
+.steps .num { font-weight: 600; min-width: 16px; }
+.restkind { min-width: 90px; }
+.relies { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 12px; color: var(--muted); }
+.graph { position: relative; display: flex; gap: 56px; align-items: flex-start; overflow-x: auto; padding: 4px 4px 24px; }
+.graph svg { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.col { display: flex; flex-direction: column; gap: 8px; min-width: 150px; position: relative; z-index: 1; }
+.col h2 { margin: 0 0 4px; }
+.gnode { display: flex; align-items: center; gap: 7px; text-align: left; border: 1px solid var(--line); border-left: 3px solid var(--s); background: var(--panel); border-radius: 7px; padding: 6px 9px; cursor: pointer; }
+.gnode .n { font-weight: 600; } .gnode small { color: var(--muted); display: block; font-size: 11px; }
+.gnode.dep .n { text-decoration: line-through; }
+.lit .gnode:not(.on) { color: var(--muted); border-color: var(--line); } .lit .gnode:not(.on) .dot { background: var(--line); }
+.gnode.focus { box-shadow: 0 0 0 2px var(--accent); }
+path.edge { fill: none; stroke: var(--edge); stroke-width: 1.4; transition: opacity .15s; }
+path.edge.dep { stroke-dasharray: 4 4; }
+.lit path.edge { opacity: .12; } .lit path.edge.on { opacity: 1; stroke: var(--accent); stroke-width: 2; }
+.legend { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+aside { position: fixed; right: 0; top: 0; bottom: 0; width: min(440px, 100vw); background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 40px; z-index: 10; box-shadow: -8px 0 24px rgba(0,0,0,.08); }
+aside .close { float: right; border: 0; background: var(--soft); border-radius: 6px; padding: 2px 9px; cursor: pointer; }
+aside .file { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); margin: 4px 0; }
+aside .note { background: var(--soft); border-radius: 6px; padding: 6px 9px; margin: 8px 0; }
+aside .where { color: var(--muted); font-size: 12px; }
+.tree li { padding-left: calc(var(--d) * 16px); }
+.empty { color: var(--muted); }
+@media (max-width: 700px) { body.drawer-open { margin-right: 0; } .kids.row { flex-direction: column; } }
+</style>
+</head>
+<body>
+<script type="application/json" id="data">{{data}}</script>
+<script type="module">
+const data = JSON.parse(document.getElementById("data").textContent)
+const byName = new Map(data.specs.map((s) => [s.name, s]))
+const KINDS = ["flow", "screen", "component", "api", "policy", "model"]
+const PLURAL = { flow: "Flows", screen: "Screens", component: "Components", api: "APIs", policy: "Policies", model: "Models" }
+const STATUSES = ["draft", "approved", "implemented", "verified", "deprecated"]
+const into = new Map(data.specs.map((s) => [s.name, []]))
+for (const s of data.specs) for (const l of s.links) into.get(l.to).push({ ...l, from: s.name })
+// Deprecated specs are frozen records, so they start hidden; the filter brings them back.
+const state = { tab: "layouts", selected: null, hidden: new Set(["deprecated"]), query: "", conds: {}, narrow: new Set() }
+// #Name selects a spec, on the Graph tab if it has no layout or steps to show.
+const fromHash = () => {
+  const name = decodeURIComponent(location.hash.slice(1))
+  state.selected = byName.has(name) ? name : null
+  if (!state.selected) return
+  const spec = byName.get(name)
+  state.tab = spec.layout || spec.steps.length ? "layouts" : "graph"
+  state.hidden.delete(spec.status)
+}
+fromHash()
+
+const h = (tag, attrs, ...children) => {
+  const el = document.createElement(tag)
+  for (const [k, v] of Object.entries(attrs ?? {})) {
+    if (v == null || v === false) continue
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v)
+    else if (k === "class") el.className = v
+    else el.setAttribute(k, v)
+  }
+  for (const c of children.flat(Infinity)) if (c != null && c !== false && c !== "") el.append(c instanceof Node ? c : String(c))
+  return el
+}
+const svg = (tag, attrs) => {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag)
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v)
+  return el
+}
+const shown = (spec) => !state.hidden.has(spec.status) && (!state.query || spec.name.toLowerCase().includes(state.query))
+const select = (name) => {
+  state.selected = state.selected === name ? null : name
+  history.replaceState(null, "", state.selected ? `#${encodeURIComponent(state.selected)}` : location.pathname)
+  render()
+}
+
+// Everything that relies on a spec (upstream) or that it relies on (downstream), transitively.
+const reach = (name, dir) => {
+  const seen = new Set([name])
+  const queue = [name]
+  while (queue.length) {
+    const next = queue.shift()
+    const edges = dir === "up" ? into.get(next).map((l) => l.from) : byName.get(next).links.map((l) => l.to)
+    for (const n of edges) if (!seen.has(n)) seen.add(n) && queue.push(n)
+  }
+  seen.delete(name)
+  return seen
+}
+
+const chip = (name, { member, variant } = {}) => {
+  const spec = byName.get(name)
+  if (!spec) return h("span", { class: "chip missing s-missing", title: `No spec named ${name} yet` }, name)
+  return h("button", { class: `chip s-${spec.status}${spec.status === "deprecated" ? " dep" : ""}`, title: `${spec.kind} · ${spec.status}`, onclick: (e) => (e.stopPropagation(), select(name)) },
+    name, member && h("small", null, `#${member}`), variant && h("small", null, variant))
+}
+// Turns [[refs]], {copy.keys}, $tokens and `code` in a line of a spec into chips and styled text.
+const INLINE = /\[\[(?:(screen|flow|model|api|policy):)?(~?)([A-Za-z]\w*)(?:#([\w.-]+))?((?:\s+[\w-]+=[^\]\s]+)*)\s*\]\]|\{copy\.([\w.-]+)\}|\$([A-Za-z][\w-]*(?:\.[\w-]+)+)|`([^`]+)`/g
+const inline = (text, spec) => {
+  const out = []
+  let last = 0
+  for (const m of text.matchAll(INLINE)) {
+    out.push(text.slice(last, m.index))
+    last = m.index + m[0].length
+    if (m[3] && m[2]) out.push(h("span", { class: "chip local", title: "a deliberate one-off, with no shared spec" }, `~${m[3]}`))
+    else if (m[3]) out.push(chip(m[3], { member: m[4], variant: /variant=([^\s\]]+)/.exec(m[5] ?? "")?.[1] }))
+    else if (m[6]) out.push(spec.copy[m[6]] != null ? h("span", { class: "copy", title: `{copy.${m[6]}}` }, `“${spec.copy[m[6]]}”`) : h("span", { class: "copy missing", title: "not in the Copy table" }, `{copy.${m[6]}}`))
+    else if (m[7]) out.push(h("span", { class: "token" }, `$${m[7]}`))
+    else out.push(h("code", null, m[8]))
+  }
+  out.push(text.slice(last))
+  return out
+}
+const ruleTag = (spec, id) => h("span", { class: "rule", title: spec.rules.find((r) => r.id === id)?.text ?? "no such rule" }, id)
+const trailingRules = (text) => {
+  const m = /\s*(?:→|->)\s*(R\d+(?:\s*,\s*R\d+)*)\s*$/.exec(text)
+  return m ? [text.slice(0, m.index), m[1].split(/\s*,\s*/)] : [text, []]
+}
+
+const head = (spec) =>
+  h("div", { class: "head" },
+    h("span", { class: `dot s-${spec.status}` }),
+    h("button", { class: "name", onclick: () => select(spec.name) }, spec.name),
+    h("span", { class: "kind" }, spec.kind),
+    h("span", { class: `pill s-${spec.status}` }, spec.status),
+    spec.amendments > 0 && h("span", { class: "badge", title: "open amendments waiting on you" }, `${spec.amendments} open amendment${spec.amendments > 1 ? "s" : ""}`),
+    spec.errors > 0 && h("span", { class: "badge bad" }, `${spec.errors} lint error${spec.errors > 1 ? "s" : ""}`))
+
+// ---- layouts ----
+const conditionsOf = (nodes, out = new Set()) => {
+  for (const n of nodes ?? []) {
+    if (n.cond) out.add(n.cond.name)
+    conditionsOf(n.children, out)
+  }
+  return out
+}
+const hasResponsive = (nodes) => (nodes ?? []).some((n) => n.responsive || hasResponsive(n.children))
+const renderNode = (spec, node) => {
+  const value = node.cond ? state.conds[spec.name]?.[node.cond.name] : undefined
+  const off = value !== undefined && value === node.cond.not
+  const dir = (state.narrow.has(spec.name) ? node.narrow : node.wide) === "row" ? "row" : "stack"
+  return h("div", { class: `node ${node.children.length ? "group" : "leaf"}${off ? " off" : ""}` },
+    h("div", { class: "line" },
+      node.label && h("span", { class: "label" }, node.label),
+      node.content && h("span", { class: "content" }, inline(node.content, spec)),
+      h("span", { class: "meta" },
+        node.responsive && h("span", { class: "resp", title: node.responsive }, dir === "row" ? "⇢ row" : "⇣ stack"),
+        node.cond && h("span", { class: "cond", title: `shown only when ${node.cond.name} is ${node.cond.not ? "false" : "true"}` }, `?${node.cond.not ? "!" : ""}${node.cond.name}`),
+        (node.rules ?? []).map((id) => ruleTag(spec, id)))),
+    node.children.length > 0 && h("div", { class: `kids ${dir}` }, node.children.map((c) => renderNode(spec, c))))
+}
+const layoutBlock = (spec) => {
+  const conds = [...conditionsOf(spec.layout)]
+  const values = (state.conds[spec.name] ??= {})
+  const cycle = (c) => () => {
+    values[c] = values[c] === undefined ? true : values[c] === true ? false : undefined
+    render()
+  }
+  return [
+    (conds.length > 0 || hasResponsive(spec.layout)) &&
+      h("div", { class: "controls" },
+        conds.map((c) => h("button", { onclick: cycle(c), title: "click to cycle: either, true, false" }, `${c}: `, h("b", null, values[c] === undefined ? "either" : String(values[c])))),
+        hasResponsive(spec.layout) && h("button", { onclick: () => (state.narrow.has(spec.name) ? state.narrow.delete(spec.name) : state.narrow.add(spec.name), render()) }, "width: ", h("b", null, state.narrow.has(spec.name) ? "narrow" : "wide"))),
+    h("div", { class: `frame${state.narrow.has(spec.name) ? " narrow" : ""}` }, h("div", { class: "kids stack" }, spec.layout.map((n) => renderNode(spec, n)))),
+  ]
+}
+const stepsBlock = (spec) =>
+  h("ul", { class: "plain steps" },
+    spec.steps.map((line) => {
+      const [text, rules] = trailingRules(line.trim())
+      const step = /^(\d+)\.\s+(.*)$/.exec(text)
+      return step
+        ? h("li", null, h("span", { class: "num" }, step[1]), inline(step[2], spec), rules.map((id) => ruleTag(spec, id)))
+        : h("li", { class: "branch" }, inline(text.replace(/^[-*]\s+/, ""), spec), rules.map((id) => ruleTag(spec, id)))
+    }))
+const reliesOn = (spec, skipComponents) => {
+  const targets = [...new Set(spec.links.filter((l) => !skipComponents || byName.get(l.to).kind !== "component").map((l) => l.to))]
+  return targets.length > 0 && h("div", { class: "relies" }, "Relies on", targets.map((t) => chip(t)))
+}
+const card = (spec, body) =>
+  h("article", { class: `card${state.selected === spec.name ? " sel" : ""}`, id: `card-${spec.name}` },
+    head(spec), spec.about && h("p", { class: "about" }, inline(spec.about, spec)), body,
+    spec.states.length > 0 && [h("h4", null, "States"), h("ul", { class: "plain" }, spec.states.map((s) => h("li", null, inline(s, spec))))],
+    reliesOn(spec, true))
+const layouts = () => {
+  const visible = data.specs.filter((s) => shown(s))
+  const groups = [
+    ["Screens", visible.filter((s) => s.kind === "screen")],
+    ["Components with a layout", visible.filter((s) => s.kind === "component" && s.layout)],
+    ["Flows", visible.filter((s) => s.kind === "flow")],
+  ]
+  const sections = groups.filter(([, specs]) => specs.length).map(([title, specs]) =>
+    [h("h2", null, title), h("div", { class: "grid" }, specs.map((s) => card(s, s.kind === "flow" ? stepsBlock(s) : s.layout ? layoutBlock(s) : h("p", { class: "empty" }, "No layout yet."))))])
+  // Everything with nothing to draw, so each filter shows something on this tab too.
+  const rest = ["component", "api", "policy", "model"]
+    .map((kind) => [kind, visible.filter((s) => s.kind === kind && !(kind === "component" && s.layout))])
+    .filter(([, specs]) => specs.length)
+  if (rest.length) sections.push(h("h2", null, "Other specs"), rest.map(([kind, specs]) => h("div", { class: "relies" }, h("span", { class: "restkind" }, PLURAL[kind]), specs.map((s) => chip(s.name)))))
+  return sections.length ? sections : h("p", { class: "empty" }, "Nothing to show with these filters.")
+}
+
+// ---- graph ----
+let drawEdges = () => {}
+// Order each column by where its neighbours sit, a few sweeps each way, so links cross less.
+const columns = () => {
+  const cols = KINDS.map((kind) => data.specs.filter((s) => s.kind === kind && shown(s))).filter((c) => c.length)
+  const pos = new Map()
+  const index = () => cols.forEach((col) => col.forEach((s, i) => pos.set(s.name, i / Math.max(1, col.length - 1))))
+  const near = (s) => [...s.links.map((l) => l.to), ...into.get(s.name).map((l) => l.from)].filter((n) => pos.has(n) && byName.get(n).kind !== s.kind)
+  index()
+  for (let sweep = 0; sweep < 6; sweep++) {
+    for (const col of sweep % 2 ? [...cols].reverse() : cols) {
+      const weight = new Map(col.map((s) => [s.name, near(s).length ? near(s).reduce((t, n) => t + pos.get(n), 0) / near(s).length : pos.get(s.name)]))
+      col.sort((a, b) => weight.get(a.name) - weight.get(b.name))
+      index()
+    }
+  }
+  return cols
+}
+const graph = () => {
+  const nodes = new Map()
+  const cols = columns().map((specs) => {
+    const kind = specs[0].kind
+    return h("div", { class: "col" }, h("h2", null, PLURAL[kind]),
+      specs.map((spec) => {
+        const el = h("button", {
+          class: `gnode s-${spec.status}${spec.status === "deprecated" ? " dep" : ""}`,
+          title: spec.about,
+          onclick: () => select(spec.name),
+          onmouseenter: () => highlight(spec.name),
+          onmouseleave: () => highlight(state.selected),
+        }, h("span", { class: "dot" }), h("span", null, h("span", { class: "n" }, spec.name), h("small", null, spec.status)))
+        nodes.set(spec.name, el)
+        return el
+      }))
+  })
+  const edges = svg("svg", {})
+  const wrap = h("div", { class: "graph" }, edges, cols)
+  const paths = []
+  // Light up a spec, everything that relies on it and everything it relies on; only links along those chains count.
+  const highlight = (focus) => {
+    const up = focus ? new Set([focus, ...reach(focus, "up")]) : null
+    const down = focus ? new Set([focus, ...reach(focus, "down")]) : null
+    wrap.classList.toggle("lit", !!focus)
+    for (const [name, el] of nodes) {
+      el.classList.toggle("on", !!focus && (up.has(name) || down.has(name)))
+      el.classList.toggle("focus", name === focus)
+    }
+    for (const { el, from, to } of paths) el.classList.toggle("on", !!focus && ((up.has(from) && up.has(to)) || (down.has(from) && down.has(to))))
+  }
+  drawEdges = () => {
+    const box = wrap.getBoundingClientRect()
+    edges.setAttribute("width", wrap.scrollWidth)
+    edges.setAttribute("height", wrap.scrollHeight)
+    edges.replaceChildren()
+    paths.length = 0
+    for (const spec of data.specs) {
+      for (const to of new Set(spec.links.map((l) => l.to))) {
+        const a = nodes.get(spec.name)?.getBoundingClientRect()
+        const b = nodes.get(to)?.getBoundingClientRect()
+        if (!a || !b) continue
+        const y1 = a.top + a.height / 2 - box.top
+        const y2 = b.top + b.height / 2 - box.top
+        const x1 = a.right - box.left + wrap.scrollLeft
+        // Rightward links go into the target's left side; links within a column or back to the left loop round its right.
+        const forward = b.left > a.right
+        const x2 = (forward ? b.left : b.right) - box.left + wrap.scrollLeft
+        const bend = forward ? Math.max(30, (x2 - x1) / 2) : 40 + Math.abs(y2 - y1) / 6
+        const d = `M${x1},${y1} C${x1 + bend},${y1} ${forward ? x2 - bend : x2 + bend},${y2} ${x2},${y2}`
+        const el = svg("path", { d, class: `edge${spec.status === "deprecated" ? " dep" : ""}` })
+        edges.append(el)
+        paths.push({ el, from: spec.name, to })
+      }
+    }
+    highlight(state.selected)
+  }
+  return [h("p", { class: "legend" }, "Each spec points right at what it relies on. Hover or click one to light up everything it reaches, both ways."), wrap]
+}
+
+// ---- detail panel ----
+const drawer = (spec) => {
+  const up = []
+  const seen = new Set([spec.name])
+  let frontier = [spec.name]
+  for (let depth = 1; frontier.length; depth++) {
+    const next = []
+    for (const name of frontier)
+      for (const from of [...new Set(into.get(name).map((l) => l.from))].sort())
+        if (!seen.has(from)) seen.add(from), next.push(from), up.push({ name: from, depth, via: name, where: [...new Set(into.get(name).filter((l) => l.from === from).map((l) => l.where))] })
+    frontier = next
+  }
+  const ordered = []
+  const place = (parent) => up.filter((r) => r.via === parent && !ordered.includes(r)).forEach((r) => (ordered.push(r), place(r.name)))
+  place(spec.name)
+  const down = [...new Map(spec.links.map((l) => [`${l.to}#${l.member ?? ""}`, l])).values()]
+  return h("aside", null,
+    h("button", { class: "close", onclick: () => select(spec.name) }, "close"),
+    head(spec),
+    h("div", { class: "file" }, spec.file),
+    spec.about && h("p", { class: "about" }, inline(spec.about, spec)),
+    spec.status === "deprecated" && h("div", { class: "note" }, `Deprecated ${spec.deprecated ?? ""}`, spec.replacedBy.length > 0 && [": replaced by ", spec.replacedBy.map((r) => chip(r))]),
+    spec.layout && [h("h4", null, "Layout"), layoutBlock(spec)],
+    spec.steps.length > 0 && [h("h4", null, "Steps"), stepsBlock(spec)],
+    spec.variants.length > 0 && [h("h4", null, "Variants"), h("div", { class: "relies" }, spec.variants.map((v) => h("code", null, v)))],
+    spec.rules.length > 0 && [h("h4", null, "Rules"), h("ul", { class: "plain rules" }, spec.rules.map((r) => h("li", null, h("span", { class: "rule" }, r.id), h("span", null, inline(r.text, spec)))))],
+    h("h4", null, "Relies on"),
+    down.length ? h("ul", { class: "plain" }, down.map((l) => h("li", null, chip(l.to, { member: l.member }), h("span", { class: "where" }, l.where)))) : h("p", { class: "empty" }, "Nothing."),
+    h("h4", null, "Relied on by"),
+    ordered.length ? h("ul", { class: "plain tree" }, ordered.map((r) => h("li", { style: `--d:${r.depth - 1}` }, chip(r.name), h("span", { class: "where" }, r.depth > 1 ? `through ${r.via} · ${r.where.join(", ")}` : r.where.join(", "))))) : h("p", { class: "empty" }, "Nothing relies on it."))
+}
+
+// ---- page ----
+const query = h("input", { type: "search", placeholder: "Find a spec", oninput: (e) => ((state.query = e.target.value.trim().toLowerCase()), render()) })
+const counts = (status) => data.specs.filter((s) => s.status === status).length
+const main = h("main")
+const header = h("header")
+let panel = null
+document.title = `Spec map · ${data.project}`
+const render = () => {
+  header.replaceChildren(
+    h("h1", null, "Spec map", h("small", null, `${data.project} · ${data.generated} · kit ${data.version}`)),
+    h("div", { class: "tabs" }, [["layouts", "Layouts"], ["graph", "Graph"]].map(([id, label]) => h("button", { class: state.tab === id ? "on" : "", onclick: () => ((state.tab = id), render()) }, label))),
+    h("div", { class: "filters" }, STATUSES.filter(counts).map((s) =>
+      h("button", { class: `s-${s}${state.hidden.has(s) ? " hidden" : ""}`, title: s === "deprecated" ? "frozen specs, hidden to start with" : "show or hide", onclick: () => (state.hidden.has(s) ? state.hidden.delete(s) : state.hidden.add(s), render()) }, h("span", { class: "dot" }), `${s} ${counts(s)}`))),
+    query)
+  main.replaceChildren(...[state.tab === "graph" ? graph() : layouts()].flat(Infinity).filter(Boolean))
+  document.body.classList.toggle("drawer-open", !!state.selected)
+  panel?.remove()
+  panel = state.selected ? drawer(byName.get(state.selected)) : null
+  if (panel) document.body.append(panel)
+  if (state.tab === "graph") requestAnimationFrame(drawEdges)
+}
+document.body.append(header, main)
+addEventListener("resize", () => drawEdges())
+addEventListener("keydown", (e) => e.key === "Escape" && state.selected && select(state.selected))
+const reveal = () => {
+  render()
+  if (state.selected && state.tab === "layouts") document.getElementById(`card-${state.selected}`)?.scrollIntoView({ block: "center" })
+}
+addEventListener("hashchange", () => (fromHash(), reveal()))
+reveal()
+</script>
+</body>
+</html>

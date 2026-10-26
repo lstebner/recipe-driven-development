@@ -68,6 +68,7 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
     flip `?conditions` and switch between wide and narrow.
   - **Graph** shows every spec and what it relies on. Hover or click a spec to light up
     everything it reaches, both ways.
+  - Deprecated specs start hidden; the status filter shows them on both tabs.
 
   Install adds `specs/.map.html` to `.gitignore`.
 
