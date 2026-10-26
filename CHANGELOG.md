@@ -9,10 +9,15 @@ patch version for fixes. Breaking means a repo's existing specs can fail lint af
 `--update`, or reports that were valid go stale (anything that changes how fingerprints are
 computed). Breaking entries say so and say what to do.
 
-Every PR adds a line under **Unreleased**. A release turns Unreleased into a version heading and
-bumps `VERSION` in `template/scripts/spec-lint.mjs` to match.
+Every PR adds a line under **Unreleased**. To release, run the **Create a release** workflow from
+the Actions tab. It opens a PR that turns Unreleased into a version heading and bumps `VERSION`
+in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the merge commit
+`vX.Y.Z` and publishes a GitHub release with its entries.
 
 ## Unreleased
+
+- Releases are made with two workflows: **Create a release** opens the release PR, and merging
+  it tags the version and publishes a GitHub release.
 
 - Claude notices spec changes made outside its session. A hook at session start and on each
   prompt compares the specs with `specs/.last-seen.json` (per checkout; install adds it to

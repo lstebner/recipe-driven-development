@@ -1,0 +1,38 @@
+name: Tag a release
+
+# After a release PR is squash-merged, tag the merge commit with the new VERSION and publish a GitHub release with
+# its changelog entries. On any other push to main, VERSION already has a tag, so this does nothing.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency: tag-release
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tag and publish VERSION if it's new
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node .github/scripts/release.mjs current)"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged; nothing to release"
+            exit 0
+          fi
+          node .github/scripts/release.mjs notes "$version" > "$RUNNER_TEMP/notes.md"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$version" -m "Recipe-Driven Development $version" "$GITHUB_SHA"
+          git push origin "v$version"
+          gh release create "v$version" --verify-tag --title "$version" --notes-file "$RUNNER_TEMP/notes.md"

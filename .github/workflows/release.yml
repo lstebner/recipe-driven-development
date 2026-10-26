@@ -1,0 +1,57 @@
+name: Create a release
+
+# Run by hand from the Actions tab. Opens a "chore: release X.Y.Z" PR that moves Unreleased in CHANGELOG.md under a
+# version heading and bumps VERSION. Squash-merge it, and tag-release.yml tags the merge commit and publishes it.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Which part to bump. Before 1.0: minor for features and anything breaking, patch for fixes."
+        type: choice
+        options: [minor, patch, major]
+        default: minor
+      version:
+        description: "Or an exact version, like 0.3.0 (overrides the bump)"
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Update the changelog and version
+        id: prepare
+        env:
+          TARGET: ${{ inputs.version || inputs.bump }}
+        run: echo "version=$(node .github/scripts/release.mjs prepare "$TARGET")" >> "$GITHUB_OUTPUT"
+      - run: ./test/run.sh
+      - name: Open the release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.prepare.outputs.version }}
+        run: |
+          branch="release/v$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -am "chore: release $VERSION"
+          git push origin "$branch"
+          {
+            echo "Releases $VERSION. Squash-merge it and \`tag-release.yml\` tags the merge commit \`v$VERSION\` and publishes a GitHub release with these notes."
+            echo
+            echo "## What's in it"
+            echo
+            node .github/scripts/release.mjs notes "$VERSION"
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --base main --head "$branch" --title "chore: release $VERSION" --body-file "$RUNNER_TEMP/body.md"
+          # A PR opened with the workflow token doesn't trigger other workflows, so the required test checks would never
+          # run on it. Start them on the release branch instead.
+          gh workflow run test.yml --ref "$branch"

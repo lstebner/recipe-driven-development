@@ -117,6 +117,13 @@ how everything is currently working. This will naturally act as an audit and can
 issues. You can also install it and simply use it going forward as you make changes or build new
 features.
 
+## Releasing
+
+For maintainers: run **Create a release** from the Actions tab, choosing `minor` or `patch` (or
+an exact version). It opens a `chore: release X.Y.Z` PR with the changelog and `VERSION` updated
+and starts the tests on it. Squash-merge it and **Tag a release** tags the merge commit and
+publishes a GitHub release with that version's changelog entries.
+
 ## Issues/suggestions
 
 Feel free to open issues here in this repo if you run into problems or have ideas that can
