@@ -16,6 +16,8 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
 
 ## Unreleased
 
+## 0.2.0 (2026-10-26)
+
 - Releases are made with two workflows: **Create a release** opens the release PR, and merging
   it tags the version and publishes a GitHub release.
 
