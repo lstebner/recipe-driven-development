@@ -14,6 +14,13 @@ bumps `VERSION` in `template/scripts/spec-lint.mjs` to match.
 
 ## Unreleased
 
+- Claude notices spec changes made outside its session. A hook at session start and on each
+  prompt compares the specs with `specs/.last-seen.json` (per checkout; install adds it to
+  `.gitignore`) and tells Claude what changed: an approval to offer building, a hand edit to a
+  built spec to re-check, a revived spec to finish bringing back, and so on. Bringing a
+  deprecated spec back is now just setting its status yourself. Run `install.sh --update` to add
+  the hooks.
+
 - New spec kind: **policy**, in `specs/policies/`, for a business decision that several specs
   depend on but can't share as a component (whether a listener can buy an album, what an
   order costs). Specs reference it as `[[policy:Name]]`, its Used by lists them, and a spec's

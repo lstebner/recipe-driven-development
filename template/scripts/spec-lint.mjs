@@ -12,10 +12,13 @@
 //   --hook-bash    Claude Code PreToolUse hook (Bash): ask the user before a shell command that looks like it writes to specs/
 //   --hook-post    Claude Code PostToolUse hook: report lint errors back to Claude after a relevant edit, and
 //                  remind it when the file it edited is the source of a deprecated spec
+//   --hook-bash-post  Claude Code PostToolUse hook (Bash): record how a command the Bash hook asked about left the specs
+//   --hook-seen    Claude Code SessionStart / UserPromptSubmit hook: tell Claude which specs changed since it last
+//                  looked (an approval, a hand edit, a git pull), and what that means it should offer to do next
 //   --version      print the kit version
 //   --root <dir>   repo root (default: $CLAUDE_PROJECT_DIR, else the parent of this script's directory)
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, statSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -331,13 +334,20 @@ const trailNote = ({ spec, trail }) => (trail.length > 1 ? `${spec.name} (throug
 // Fingerprint of what a spec asks for. Status, source and the deprecation fields are lifecycle, not intent, so
 // they're left out: marking a spec verified, or deprecating a policy it uses, doesn't make its report stale, but
 // changing a rule does. The decision of every policy it relies on (see KINDS) is part of what it asks for too.
+// A policy's decision, as it counts toward the fingerprints of specs that rely on it. Worked out once per loaded
+// spec, since a snapshot fingerprints every spec and many can rely on the same policy.
+const decisions = new WeakMap()
+const decisionOf = (policy) => {
+  if (!decisions.has(policy)) {
+    const texts = sectionTexts(policy.raw)
+    decisions.set(policy, JSON.stringify(KINDS[policy.kind].fingerprinted.map((key) => texts[key]?.text ?? "")))
+  }
+  return decisions.get(policy)
+}
 const hashOf = (spec, byName) => {
   const { status, source, deprecated, replaced_by, ...intent } = spec.fm
   const parts = { ...protectedParts(spec.raw), frontmatter: JSON.stringify(intent) }
-  for (const { spec: policy } of reliesOn(spec, byName)) {
-    const texts = sectionTexts(policy.raw)
-    parts[`[[${policy.kind}:${policy.name}]]`] = JSON.stringify(KINDS[policy.kind].fingerprinted.map((key) => texts[key]?.text ?? ""))
-  }
+  for (const { spec: policy } of reliesOn(spec, byName)) parts[`[[${policy.kind}:${policy.name}]]`] = decisionOf(policy)
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 12)
 }
 
@@ -416,7 +426,7 @@ const lint = ({ all, live, tokens, outline }) => {
       for (const problem of resolveReplacements(spec, byName).broken) report("warning", spec, 1, `deprecated, but its chain of replacements is broken: ${problem}`)
       continue
     }
-    for (const key of DEPRECATION_KEYS) if (fm[key] !== undefined) report("error", spec, 1, `"${key}" belongs only on a deprecated spec (status is ${fm.status ?? "missing"})`)
+    for (const key of DEPRECATION_KEYS) if (fm[key] !== undefined) report("error", spec, 1, `"${key}" belongs only on a deprecated spec (status is ${fm.status ?? "missing"}); if it's been brought back, remove it`)
     for (const section of KINDS[kind].required) {
       const found = spec.sections[section.toLowerCase()]
       if (!found) report(incomplete, spec, 1, `missing required section "## ${section}"`)
@@ -764,10 +774,14 @@ const applyEdit = (text, input) => {
 }
 
 const hookPre = () => {
-  const { tool_name: tool, tool_input: input = {} } = readStdin()
+  const { tool_name: tool, tool_input: input = {}, tool_use_id: id } = readStdin()
   const file = input.file_path && path.resolve(input.file_path)
   const kind = specKind(file)
   if (!kind) return
+  if (kind !== "tokens") {
+    const specs = loadAll()
+    beginOwnChange(id ?? `file:${file}`, specs, reachOf(file, kind, specs))
+  }
   // A spec that doesn't exist yet counts as an empty draft, so creating one straight into approved still asks.
   const before = existsSync(file) ? readFileSync(file, "utf8") : ""
   const after = tool === "Write" ? input.content : applyEdit(before, input)
@@ -846,9 +860,13 @@ const hookPre = () => {
   if (from === "draft" && to === "draft") return
   if (changed.length === 0) return
   // Claude may record implementation progress (status approved ↔ implemented, verified → implemented, source paths) without asking.
+  // It may also clear `deprecated` and `replaced_by` from a live spec, which is what a revived one still carries:
+  // bringing it back was the user's call (they set its status), the fields are a lint error on a live spec anyway,
+  // and they aren't part of what it asks for. (A deprecated spec never gets this far: it's frozen above.)
   if (changed.length === 1 && changed[0] === "frontmatter") {
     const { status: s1, source: src1, ...rest1 } = oldFm
     const { status: s2, source: src2, ...rest2 } = newFm
+    for (const key of DEPRECATION_KEYS) if (rest2[key] === undefined) delete rest1[key]
     const progressOnly = JSON.stringify(rest1) === JSON.stringify(rest2) && (s1 === s2 || (CLAUDE_STATUSES.includes(s1) && CLAUDE_STATUSES.includes(s2) && s2 !== "approved"))
     if (progressOnly) return
   }
@@ -883,12 +901,16 @@ const hookPre = () => {
 // The Edit/Write hook can't see shell commands, so catch the obvious ways a command could change a spec.
 const SHELL_WRITE = /\b(sed|perl)\b[^|;&]*\s-[a-z]*i|\b(tee|mv|cp|rm|truncate|touch|ln|dd)\b|\bgit\s+(checkout|restore|reset|apply|stash|mv|rm)\b|\b(node|python3?|ruby|bun|deno)\s+(-e|-c|--eval)\b/
 const hookBash = () => {
-  const { tool_input: input = {} } = readStdin()
+  const { tool_input: input = {}, tool_use_id: id } = readStdin()
   // Reports are Claude's own output; only the specs themselves are protected.
   const command = (input.command ?? "").replace(/\bspecs\/_reports\b\S*/g, "")
   const mentionsSpecs = /(^|[\s'"=(/])specs(\/|['"\s;|&)]|$)/.test(command)
   const redirectsIntoSpecs = /\d?>>?\s*['"]?[^\s'"&|;]*\bspecs\//.test(command)
   if (!redirectsIntoSpecs && !(mentionsSpecs && SHELL_WRITE.test(command))) return
+  if (existsSync(specsDir)) {
+    const specs = loadAll()
+    beginOwnChange(id ?? `bash:${input.command}`, specs, specs.all.map(keyOf))
+  }
   decide(
     "ask",
     `This shell command looks like it changes files in specs/, which skips the spec protection on Edit/Write. ` +
@@ -896,11 +918,187 @@ const hookBash = () => {
   )
 }
 
+// After a shell command the Bash hook asked about has run, record how it left the specs (see beginOwnChange).
+const hookBashPost = () => {
+  const { tool_input: input = {}, tool_use_id: id } = readStdin()
+  if (existsSync(specsDir)) endOwnChange(id ?? `bash:${input.command}`, loadAll, { anyNew: true })
+}
+
+// ---------- noticing changes ----------
+
+// What Claude last saw of each spec: its status and fingerprint, keyed by "kind/Name". It's local to this checkout
+// and ignored by git, so a teammate's approval shows up here after a pull. Claude's own changes are recorded as it
+// makes them (see beginOwnChange), so what's reported is only what changed somewhere else.
+const seenFile = path.join(specsDir, ".last-seen.json")
+const seenLock = `${seenFile}.lock`
+const keyOf = (spec) => `${spec.kind}/${spec.name}`
+
+// Hooks for tool calls made in parallel run at the same time, so every read-modify-write of the record holds a lock.
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+const withSeenLock = (fn) => {
+  for (let tries = 0; tries < 200; tries++) {
+    try {
+      mkdirSync(seenLock)
+      break
+    } catch {
+      // A lock left behind by a hook that crashed goes stale after a few seconds. After ~4s of waiting, go ahead
+      // without it rather than hold up the session.
+      try {
+        if (Date.now() - statSync(seenLock).mtimeMs > 5000) rmdirSync(seenLock)
+      } catch {}
+      sleep(20)
+    }
+  }
+  try {
+    return fn()
+  } finally {
+    try {
+      rmdirSync(seenLock)
+    } catch {}
+  }
+}
+
+// { record } when there's a readable record, { unreadable: true } when the file is there but can't be parsed.
+const readSeen = () => {
+  if (!existsSync(seenFile)) return {}
+  try {
+    const record = JSON.parse(readFileSync(seenFile, "utf8"))
+    return record?.specs ? { record: { pending: {}, ...record } } : { unreadable: true }
+  } catch {
+    return { unreadable: true }
+  }
+}
+// Written to a temporary file and renamed into place, so a reader never sees half a record. Notes about changes
+// Claude started but never finished (an edit the user denied) are dropped after an hour.
+const writeSeen = (record) => {
+  const pending = Object.fromEntries(Object.entries(record.pending ?? {}).filter(([, p]) => Date.now() - p.at < 3_600_000))
+  const tmp = `${seenFile}.${process.pid}.tmp`
+  writeFileSync(tmp, `${JSON.stringify({ specs: record.specs, pending }, null, 2)}\n`)
+  renameSync(tmp, seenFile)
+}
+
+const glimpse = (spec, byName) => ({ status: statusOf(spec), hash: hashOf(spec, byName) })
+const snapshot = (specs) => {
+  const byName = byNameOf(specs.all)
+  return Object.fromEntries(specs.all.map((spec) => [keyOf(spec), glimpse(spec, byName)]))
+}
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+
+// What a changed spec means for Claude, one line each. Claude offers the next step; it never starts building or
+// verifying on its own because a status moved. A spec whose status and content both changed gets a line for each.
+const BUILT = ["implemented", "verified"]
+const statusNote = (spec, from, to, outlined) => {
+  const name = spec.name
+  if (from === "deprecated") {
+    // Only the clean-up that's still to do, so Claude doesn't repeat what the user already did.
+    const todo = []
+    if (DEPRECATION_KEYS.some((key) => spec.fm[key] !== undefined)) todo.push("remove its `deprecated` and `replaced_by` lines")
+    if (!/reviv|brought back/i.test(sectionTexts(spec.raw).decisions?.text ?? "")) todo.push("add a dated line under ## Decisions saying why it's back")
+    if (!outlined.has(name)) todo.push("put it back in specs/outline.md")
+    return `${name} was brought back (deprecated → ${to}).${todo.length ? ` Finish reviving it: ${todo.join(", ")}.` : ""} Then offer to build it.`
+  }
+  if (to === "deprecated") return `${name} was deprecated. ${outlined.has(name) ? "Take it off specs/outline.md, and don't" : "Don't"} build on it from now on.`
+  if (to === "approved" && from === "draft") return `${name} was approved. Offer to build it; don't start until the user says so.`
+  if (to === "verified") return `${name} was marked verified by hand. Lint checks it has a passing report; if it doesn't, say so.`
+  if (to === "draft") return `${name} went back to draft (from ${from}): it's being reworked, so don't build on it until it's approved again.`
+  return `${name} went from ${from} to ${to}${BUILT.includes(from) && !BUILT.includes(to) ? ": it needs building again" : ""}.`
+}
+const contentNote = (name, status) =>
+  BUILT.includes(status)
+    ? `${name} changed after it was built (its own text, or a policy it relies on). Check the code still matches it` +
+      `${status === "verified" ? `, and set it to implemented: its report no longer matches, so it needs /spec-verify again` : ", and offer to re-verify it"}.`
+    : `${name} changed since you last read it. Re-read it before building on it.`
+
+const changeNotes = (seen, now, specs) => {
+  const byKey = new Map(specs.all.map((s) => [keyOf(s), s]))
+  const outlined = new Set((specs.outline?.entries ?? []).map((e) => e.name))
+  const notes = []
+  for (const [key, { status, hash }] of Object.entries(now)) {
+    const spec = byKey.get(key)
+    const was = seen[key]
+    if (!was) {
+      if (status !== "draft") notes.push(`${spec.name} (${spec.kind}) is new, and already ${status}: read it before working on anything it covers.`)
+      continue
+    }
+    if (was.status !== status) notes.push(statusNote(spec, was.status, status, outlined))
+    if (was.hash !== hash && status !== "draft" && status !== "deprecated") notes.push(contentNote(spec.name, status))
+  }
+  for (const key of Object.keys(seen)) if (!now[key]) notes.push(`${key.split("/")[1]} was deleted.`)
+  return notes
+}
+
+const hookSeen = () => {
+  const { hook_event_name: event = "UserPromptSubmit" } = readStdin()
+  if (!existsSync(specsDir)) return
+  const specs = loadAll()
+  const now = snapshot(specs)
+  const notes = withSeenLock(() => {
+    const { record, unreadable } = readSeen()
+    if (!record || !same(record.specs, now)) writeSeen({ ...record, specs: now })
+    if (unreadable) {
+      return [
+        `The record of what you last saw of the specs (specs/.last-seen.json) couldn't be read, so changes since then can't be listed. ` +
+          `It's been started afresh; run node scripts/spec-lint.mjs --summary if you need to see where everything stands.`,
+      ]
+    }
+    // The first run only records what's there.
+    return record ? changeNotes(record.specs, now, specs) : []
+  })
+  if (notes.length === 0) return
+  const context =
+    `Spec changes since you last looked, made outside your own edits (by the user, or a git pull):\n` +
+    `${notes.map((n) => `- ${n}`).join("\n")}\n` +
+    `Tell the user briefly what you noticed and offer the next step for each. Don't start building or verifying unasked.`
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: context } }))
+}
+
+// Claude's own changes to specs are recorded as it makes them, so they aren't reported back to it. Before a change
+// (an Edit or Write to a spec, or a shell command that looks like it writes to specs/), note how the specs it can
+// touch look. Afterwards, each one whose record still matches that note moves on to how Claude left it. One whose
+// record doesn't match had already changed somewhere else, unreported, so it keeps its old record and that change
+// is still reported. `id` pairs the two halves: the tool call's ID, or failing that the file or command.
+const beginOwnChange = (id, specs, keys) => {
+  const now = snapshot(specs)
+  withSeenLock(() => {
+    const { record } = readSeen()
+    if (!record) return
+    record.pending[id] = { at: Date.now(), specs: Object.fromEntries(keys.map((key) => [key, now[key] ?? null])) }
+    writeSeen(record)
+  })
+}
+const endOwnChange = (id, loadSpecs, { anyNew = false } = {}) => {
+  // Most tool calls have nothing to record (the Bash hook runs after every command), so check before fingerprinting.
+  if (!readSeen().record?.pending[id]) return
+  const now = snapshot(loadSpecs())
+  withSeenLock(() => {
+    const { record } = readSeen()
+    const before = record?.pending[id]
+    if (!before) return
+    // A shell command can create specs nobody named beforehand; a spec that's new to both counts as Claude's.
+    const keys = new Set([...Object.keys(before.specs), ...(anyNew ? Object.keys(now).filter((key) => !record.specs[key]) : [])])
+    for (const key of keys) {
+      if (!same(record.specs[key], before.specs[key])) continue
+      if (now[key]) record.specs[key] = now[key]
+      else delete record.specs[key]
+    }
+    delete record.pending[id]
+    writeSeen(record)
+  })
+}
+// The specs an edit to `file` can change the fingerprint of: the spec itself, and any that rely on it as a policy.
+const reachOf = (file, kind, specs) => {
+  const name = path.basename(file, ".md")
+  const byName = byNameOf(specs.all)
+  const reached = specs.live.filter((s) => reliesOn(s, byName).some((r) => r.spec.name === name)).map(keyOf)
+  return [`${kind}/${name}`, ...reached]
+}
+
 const hookPost = () => {
-  const { tool_input: input = {} } = readStdin()
+  const { tool_input: input = {}, tool_use_id: id } = readStdin()
   const file = input.file_path && path.resolve(input.file_path)
   if (!file || !existsSync(specsDir)) return
   const specs = loadAll()
+  if (specKind(file) && specKind(file) !== "tokens") endOwnChange(id ?? `file:${file}`, () => specs)
   const sourcesOf = (spec) => asList(spec.fm.source).map((src) => path.join(root, src))
   const sources = new Set(specs.all.flatMap(sourcesOf))
   if (!file.startsWith(specsDir + path.sep) && !sources.has(file)) return
@@ -922,8 +1120,10 @@ const hookPost = () => {
 
 if (has("--version")) console.log(VERSION)
 else if (has("--hook-pre")) hookPre()
+else if (has("--hook-bash-post")) hookBashPost()
 else if (has("--hook-bash")) hookBash()
 else if (has("--hook-post")) hookPost()
+else if (has("--hook-seen")) hookSeen()
 else if (!existsSync(specsDir)) console.log(`no specs/ directory under ${root}`)
 else if (has("--new")) {
   const result = newSpec(argOf("--new"), args[args.indexOf("--new") + 2])
