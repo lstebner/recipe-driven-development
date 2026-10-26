@@ -47,6 +47,11 @@ and follows it; the user tastes the result before it's called done. The format i
   one Edit can't reach both); the hook asks them to confirm. Then remove it from
   `specs/outline.md`. A draft isn't deprecated: delete it (and its outline entry) instead. You
   may suggest deprecating, but never do it unasked.
+- **Trade-offs:** when you settle on a good-enough way of meeting a spec and a better one would
+  only be worth it later, add a dated line under `## Decisions` saying what you chose, why, and
+  when to revisit it (a condition someone would notice, not "someday"), and mention it to the
+  user. Don't act on a revisit line unasked, but tell the user when you see its condition has been
+  met. A trade-off that changes what the spec says is an amendment, not a decision.
 - **Shared vs one-off:** before creating a component, check `specs/components/`. Reuse a shared
   component (adding a variant if only props or appearance differ) rather than forking it. A new
   one-off must appear as `[[~Name]]` in the spec, which for an approved spec means an amendment.

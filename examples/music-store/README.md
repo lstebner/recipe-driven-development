@@ -8,7 +8,7 @@ The specs are at different stages on purpose:
 
 | spec | kind | status | what it shows |
 |---|---|---|---|
-| [`Album`](specs/models/Album.md) | model | `verified` | the finished state: built (`src/album.mjs`), every rule has a tagged test, and [the report](specs/_reports/Album.md) is stamped with the spec's fingerprint |
+| [`Album`](specs/models/Album.md) | model | `verified` | the finished state: built (`src/album.mjs`), every rule has a tagged test, and [the report](specs/_reports/Album.md) is stamped with the spec's fingerprint. Decisions records a trade-off and when to revisit it |
 | [`AlbumDetail`](specs/screens/AlbumDetail.md) | screen | `approved` | a layout tree with a shared component, a one-off, copy keys and tokens; Decisions records one accepted and one rejected amendment |
 | [`PrimaryButton`](specs/components/PrimaryButton.md) | component | `approved` | variants and states, plus a generated Used by |
 | [`GetAlbum`](specs/apis/GetAlbum.md) | api | `approved` | an **open amendment**: Claude found the spec was missing something while building, and work on it is paused until you accept or reject |

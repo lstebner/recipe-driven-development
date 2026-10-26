@@ -29,6 +29,11 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   includes specs built on the ones that rely on it. Run `install.sh --update` for the new script
   and rules.
 
+- Decisions can record trade-offs: a good-enough solution, why, and when to revisit it.
+  `specs/README.md` describes the convention and the CLAUDE.md rules have Claude add these lines
+  while building and say when a revisit condition has been met. Run `install.sh --update` to get
+  both.
+
 ## 0.2.0 (2026-10-26)
 
 - Releases are made with two workflows: **Create a release** opens the release PR, and merging
