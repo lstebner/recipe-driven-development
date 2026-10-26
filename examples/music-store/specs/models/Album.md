@@ -3,6 +3,7 @@ model: Album
 status: verified
 source: [src/album.mjs]
 ---
+
 ## Purpose
 An album listed for sale.
 

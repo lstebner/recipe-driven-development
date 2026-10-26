@@ -3,6 +3,7 @@ api: ApiName
 status: draft
 endpoint:          # e.g. GET /albums/{id}
 ---
+
 ## Purpose
 <!-- What a caller gets done with it, in one line. -->
 

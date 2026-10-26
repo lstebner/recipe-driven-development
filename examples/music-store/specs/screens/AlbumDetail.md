@@ -2,6 +2,7 @@
 screen: AlbumDetail
 status: approved
 ---
+
 ## Goal
 Let a listener see an album's details and release history, and buy it.
 

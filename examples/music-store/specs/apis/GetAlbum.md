@@ -3,6 +3,7 @@ api: GetAlbum
 status: approved
 endpoint: GET /albums/{id}
 ---
+
 ## Purpose
 Fetch one album for its detail page.
 

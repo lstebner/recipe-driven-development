@@ -187,6 +187,7 @@ screen: AlbumDetail             # must match the filename
 status: approved
 source: [apps/web/src/app/albums/[id]/page.tsx]   # optional until implemented
 ---
+
 ## Goal
 Let a listener see an album's details and release history, and buy it.
 
@@ -234,6 +235,7 @@ component: PrimaryButton
 status: approved
 source: packages/ui/src/PrimaryButton.tsx
 ---
+
 ## Purpose
 The single call-to-action on a screen.
 
@@ -269,6 +271,7 @@ A journey across screens and API calls: checkout, onboarding, password reset.
 flow: Checkout
 status: approved
 ---
+
 ## Goal
 A listener who has chosen an album ends up owning it, or knows exactly why not.
 
@@ -313,6 +316,7 @@ model: Album
 status: approved
 source: [packages/db/schema/album.ts]
 ---
+
 ## Purpose
 An album listed for sale.
 
@@ -353,6 +357,7 @@ status: approved
 endpoint: GET /albums/{id}
 source: [apps/api/src/routes/albums.ts]
 ---
+
 ## Purpose
 Fetch one album for its detail page.
 
@@ -407,6 +412,7 @@ policy: CanBuyAlbum
 status: approved
 source: [apps/api/src/policies/canBuyAlbum.ts]
 ---
+
 ## Purpose
 Whether a listener can buy an album, already owns it, or can't get it at all.
 

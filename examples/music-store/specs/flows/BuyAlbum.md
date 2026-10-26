@@ -2,6 +2,7 @@
 flow: BuyAlbum
 status: draft
 ---
+
 ## Goal
 A listener on an album's page ends up owning it, or knows exactly why not.
 
