@@ -26,6 +26,7 @@ From the repo root:
 ```
 node template/scripts/spec-lint.mjs --root examples/music-store             # lint: specs OK
 node template/scripts/spec-lint.mjs --root examples/music-store --summary   # status dashboard
+node template/scripts/spec-lint.mjs --root examples/music-store --map       # spec map: open the page it writes
 node --test examples/music-store/src/album.test.mjs                         # Album's tagged tests
 ```
 

@@ -53,7 +53,19 @@ for f in tokens.md outline.md _templates/{screen,component,flow,model,api,policy
   copy "$tpl/specs/$f" "$target/specs/$f"
 done
 mkdir -p "$target"/specs/{screens,components,flows,models,apis,policies,_reports}
-copy "$tpl/scripts/spec-lint.mjs" "$target/scripts/spec-lint.mjs" yes
+# spec-lint.mjs goes in as one file, with the map page (scripts/spec-map.html in the kit) built into it.
+bundle="$(mktemp)"
+trap 'rm -f "$bundle"' EXIT
+chmod 644 "$bundle"
+node - "$tpl/scripts/spec-lint.mjs" "$tpl/scripts/spec-map.html" "$bundle" <<'EOF'
+const fs = require("fs")
+const [script, page, out] = process.argv.slice(2)
+const line = "\nconst MAP_PAGE = null\n"
+const text = fs.readFileSync(script, "utf8")
+if (text.split(line).length !== 2) throw new Error(`${script} has no "const MAP_PAGE = null" line to fill in`)
+fs.writeFileSync(out, text.replace(line, () => `\nconst MAP_PAGE = ${JSON.stringify(fs.readFileSync(page, "utf8"))}\n`))
+EOF
+copy "$bundle" "$target/scripts/spec-lint.mjs" yes
 for s in spec-new spec-review spec-verify spec-migrate; do
   copy "$tpl/.claude/skills/$s/SKILL.md" "$target/.claude/skills/$s/SKILL.md" yes
 done
@@ -91,16 +103,19 @@ fs.writeFileSync(file, JSON.stringify(settings, null, 2) + "\n")
 console.log(`  ${added || spinner ? "merge  " : "keep   "} .claude/settings.json${[added && "hooks", spinner && "spinner verbs"].filter(Boolean).map((s) => ` (${s})`).join("")}`)
 EOF
 
-# .gitignore: what Claude last saw of each spec is per checkout, so a teammate's changes show up after a pull.
+# .gitignore: what Claude last saw of each spec is per checkout, so a teammate's changes show up after a pull; the
+# spec map is generated on demand, so it would only ever be stale in git.
 # Compare lines without CR line endings, trailing whitespace or a leading "/", so an existing entry is recognised.
 # One awk reading the file itself, not a pipeline: under pipefail, a grep -q that stops early fails the pipe.
-if ! awk '{ sub(/\r$/, ""); sub(/[ \t]+$/, ""); sub(/^\//, "") } $0 == "specs/.last-seen.json" { found = 1 } END { exit !found }' \
-  "$target/.gitignore" 2>/dev/null; then
-  { [[ -s "$target/.gitignore" && -n "$(tail -c1 "$target/.gitignore")" ]] && echo; echo "specs/.last-seen.json"; } >> "$target/.gitignore"
-  echo "  append  .gitignore (specs/.last-seen.json)"
-else
-  echo "  keep    .gitignore"
-fi
+ignored=()
+for entry in specs/.last-seen.json specs/.map.html; do
+  if ! awk -v entry="$entry" '{ sub(/\r$/, ""); sub(/[ \t]+$/, ""); sub(/^\//, "") } $0 == entry { found = 1 } END { exit !found }' \
+    "$target/.gitignore" 2>/dev/null; then
+    { [[ -s "$target/.gitignore" && -n "$(tail -c1 "$target/.gitignore")" ]] && echo; echo "$entry"; } >> "$target/.gitignore"
+    ignored+=("$entry")
+  fi
+done
+if (( ${#ignored[@]} )); then echo "  append  .gitignore (${ignored[*]})"; else echo "  keep    .gitignore"; fi
 
 # CLAUDE.md: append the rules block once. --update replaces it in place, including a block
 # written before the rename (marked spec-kit:start / spec-kit:end).

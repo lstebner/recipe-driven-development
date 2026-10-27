@@ -7,6 +7,8 @@
 //   --refs <Name>[#member]  list every live spec that relies on a spec (or on one model field / API error code),
 //                  directly or through other specs, with its status and where it makes the link
 //   --components <Name>  print the fingerprint of each shared component a spec is built from (goes in its report too)
+//   --map [Name]   write specs/.map.html: each screen's Layout drawn as nested boxes, and a graph of every spec and
+//                  what it relies on, coloured by status; with a Name, the page opens on that spec
 //   --new <kind> <Name>  create a draft spec from specs/_templates/<kind>.md
 //   --scaffold     create a draft spec for every entry in specs/outline.md that doesn't have one yet
 //   --hook-pre     Claude Code PreToolUse hook (Edit/Write): ask the user before protected spec content
@@ -928,6 +930,86 @@ const refsReport = (query, specs) => {
   return { text: out.join("\n") }
 }
 
+// ---------- map ----------
+
+// The Layout tree as nested nodes: { label, cond, rules, responsive, wide, narrow, content, children }. `content` is
+// what's left of the line once those are taken out ([[refs]], {copy.keys}, $tokens, plain words), for the page to render.
+const layoutOf = (spec) => {
+  const top = { children: [] }
+  const stack = [{ indent: -1, node: top }]
+  for (const line of spec.sections.layout?.lines ?? []) {
+    const bullet = /^(\s*)[-*]\s+(.*?)\s*$/.exec(line.text.replace(/\t/g, "  "))
+    if (!bullet) continue
+    let text = bullet[2]
+    const node = { children: [] }
+    const rules = /\s*(?:→|->)\s*(R\d+(?:\s*,\s*R\d+)*)$/.exec(text)
+    if (rules) [node.rules, text] = [rules[1].split(/\s*,\s*/), text.slice(0, rules.index)]
+    const cond = /^\?(!?)([\w.-]+)\s*/.exec(text)
+    if (cond) [node.cond, text] = [{ not: !!cond[1], name: cond[2] }, text.slice(cond[0].length)]
+    const label = /^([A-Za-z][\w &/-]*):(?:\s+|$)/.exec(text)
+    if (label) [node.label, text] = [label[1], text.slice(label[0].length)]
+    // (≥md: row · <md: stack): how the children are arranged on wide and narrow screens.
+    const responsive = /\(([^()]*(?:≥|>=|<)[^()]*)\)/.exec(text)
+    if (responsive) {
+      node.responsive = responsive[1]
+      for (const part of responsive[1].split(/·|,/)) {
+        const m = /^\s*(≥|>=|<)\s*\w+\s*:\s*(\w+)/.exec(part)
+        if (m) node[m[1] === "<" ? "narrow" : "wide"] = m[2]
+      }
+      text = text.replace(responsive[0], "")
+    }
+    node.content = text.trim()
+    while (stack.at(-1).indent >= bullet[1].length) stack.pop()
+    stack.at(-1).node.children.push(node)
+    stack.push({ indent: bullet[1].length, node })
+  }
+  return top.children.length ? top.children : null
+}
+
+// Everything the map page shows, as plain data; the page itself does the drawing.
+const mapData = (specs) => {
+  const byName = byNameOf(specs.all)
+  const { problems } = lint(specs)
+  const lines = (section) => (section?.lines ?? []).map((l) => l.text).filter((t) => t.trim())
+  return {
+    project: path.basename(root),
+    version: VERSION,
+    generated: new Date().toISOString().slice(0, 16).replace("T", " "),
+    specs: specs.all.map((spec) => {
+      const mine = problems.filter((p) => p.file === rel(spec.file))
+      return {
+        name: spec.name,
+        kind: spec.kind,
+        status: statusOf(spec),
+        file: rel(spec.file),
+        about: (spec.sections.goal ?? spec.sections.purpose)?.lines.map((l) => l.text.trim()).join("\n").trim().split(/\n\s*\n/)[0].replace(/\s*\n\s*/g, " ") ?? "",
+        rules: rulesOf(spec).filter((r) => r.short).map((r) => ({ id: r.short, text: r.text.replace(/^[-*]\s+\**(?:[A-Za-z]\w*\.)?R\d+\**\s*:\s*/, "") })),
+        copy: Object.fromEntries(tableRows(spec.sections.copy).map((r) => [r.cells[0].replace(/^`|`$/g, ""), r.cells[1] ?? ""])),
+        layout: layoutOf(spec),
+        // A States table gives { name, when, looks }; a list from before the table, or a flow's, gives { text }.
+        states: formatOf(spec, "states")?.current
+          ? tableRows(spec.sections.states).map(({ cells: [name, when, looks] }) => ({ name, when, looks }))
+          : lines(spec.sections.states).filter((l) => !isTableRow(l)).map((l) => ({ text: l.replace(/^\s*[-*]\s+/, "") })),
+        steps: spec.kind === "flow" ? lines(spec.sections.steps) : [],
+        variants: variantsOf(spec),
+        amendments: amendmentsOf(spec),
+        errors: mine.filter((p) => p.level === "error").length,
+        warnings: mine.filter((p) => p.level !== "error").length,
+        deprecated: spec.fm.deprecated,
+        replacedBy: replacementsOf(spec),
+        links: linksOf(spec, byName).map(({ target, member, where }) => ({ to: target.name, member, where })),
+      }
+    }),
+  }
+}
+
+// The map page, with {{data}} where mapData() goes. In the kit it's spec-map.html next to this script, so it can be
+// edited as a page of its own; install.sh writes it in here instead, so an installed repo has one file to run.
+const MAP_PAGE = null
+const mapPage = (data) =>
+  (MAP_PAGE ?? readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "spec-map.html"), "utf8"))
+    .replace("{{data}}", () => JSON.stringify(data).replace(/</g, "\\u003c"))
+
 // ---------- summary ----------
 
 const walk = (dir, out = []) => {
@@ -1464,6 +1546,16 @@ else if (has("--refs")) {
     process.exit(1)
   }
   console.log(text)
+} else if (has("--map")) {
+  const specs = loadAll()
+  const focus = argOf("--map")?.startsWith("--") ? null : argOf("--map")
+  if (focus && !specs.all.some((s) => s.name === focus)) {
+    console.error(`no spec named "${focus}"`)
+    process.exit(1)
+  }
+  const out = path.join(specsDir, ".map.html")
+  writeFileSync(out, mapPage(mapData(specs)))
+  console.log(`wrote ${rel(out)}; open file://${out}${focus ? `#${focus}` : ""}`)
 } else if (has("--hash")) {
   const spec = loadAll().all.find((s) => s.name === argOf("--hash"))
   if (!spec) {
