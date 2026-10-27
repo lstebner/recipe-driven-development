@@ -4,6 +4,8 @@
 //   --fix          regenerate the "Used by" section of component, model, API and policy specs, then lint
 //   --summary      status dashboard: specs, rules, tagged tests, open amendments, shared vs one-off
 //   --hash <Name>  print the fingerprint of a spec's protected content (goes in its /spec-verify report)
+//   --refs <Name>[#member]  list every live spec that relies on a spec (or on one model field / API error code),
+//                  directly or through other specs, with its status and where it makes the link
 //   --new <kind> <Name>  create a draft spec from specs/_templates/<kind>.md
 //   --scaffold     create a draft spec for every entry in specs/outline.md that doesn't have one yet
 //   --hook-pre     Claude Code PreToolUse hook (Edit/Write): ask the user before protected spec content
@@ -642,6 +644,104 @@ const fixUsedBy = (specs) => {
 const format = (problems) =>
   problems.map((p) => `${p.file}:${p.n}  ${p.level === "error" ? "error  " : "warning"}  ${p.message}`).join("\n")
 
+// ---------- reverse lookup ----------
+
+// Every link a spec makes to another: { from, target, member, where }. `where` is the section it's in, or for a
+// flow the step ("step 2"), or "uses" for a component that's listed in the frontmatter but not laid out.
+const SHARED_REF = /\[\[([A-Za-z]\w*)((?:\s+[\w-]+=[^\]\s]+)*)\s*\]\]/g
+const TYPED_REF = /\[\[(screen|flow|model|api|policy):([A-Za-z]\w*)(?:#([\w.-]+))?\]\]/g
+const linksOf = (spec, byName) => {
+  const links = []
+  const add = (name, kind, member, where) => {
+    const target = byName.get(name)
+    if (target && target !== spec && target.kind === kind) links.push({ from: spec, target, member, where })
+  }
+  for (const key of protectedSections(spec)) {
+    let step = null
+    for (const line of spec.sections[key].lines) {
+      if (key === "steps" && /^\d+\.\s/.test(line.text)) step = /^\d+/.exec(line.text)[0]
+      const where = step ? `step ${step}` : key
+      const text = line.text.replace(/`[^`]*`/g, (m) => " ".repeat(m.length))
+      // [[Name]] is a component only in a layout or a state (see refsOf); [[kind:Name]] counts anywhere.
+      if (["layout", "states"].includes(key)) for (const m of text.matchAll(SHARED_REF)) add(m[1], "component", undefined, where)
+      for (const m of text.matchAll(TYPED_REF)) add(m[2], m[1], m[3], where)
+    }
+  }
+  for (const name of asList(spec.fm.uses)) if (!links.some((l) => l.target.name === name)) add(name, "component", undefined, "uses")
+  return links
+}
+
+// The live specs that rely on `target`: those that link to it, then those that link to them, and so on, each
+// listed once at the shortest distance, as { spec, parent, where }. With a member (a model field or API error code),
+// the first step counts links to that member and links to the whole target, which take in every member (an API
+// that returns [[model:Album]] returns its price too), but not links to its other members. Those whole-target
+// links are marked in `where`. Deprecated specs are frozen, so they're returned apart.
+const reliedOnBy = (target, specs, member) => {
+  const byName = byNameOf(specs.all)
+  const links = specs.live.flatMap((s) => linksOf(s, byName))
+  const reaches = (l) => !member || l.member === member || l.member === undefined
+  const whereOf = (l) => (member && l.target === target && l.member === undefined ? `${l.where} (all of ${target.name})` : l.where)
+  const found = []
+  const seen = new Set([target])
+  let frontier = [target]
+  while (frontier.length) {
+    const next = []
+    for (const node of frontier) {
+      const into = links.filter((l) => l.target === node && !seen.has(l.from) && (node !== target || reaches(l)))
+      for (const from of [...new Set(into.map((l) => l.from))].sort((a, b) => a.name.localeCompare(b.name))) {
+        seen.add(from)
+        found.push({ spec: from, parent: node === target ? null : node, where: [...new Set(into.filter((l) => l.from === from).map(whereOf))] })
+        next.push(from)
+      }
+    }
+    frontier = next
+  }
+  const frozen = specs.deprecated.filter((s) => linksOf(s, byName).some((l) => l.target === target && reaches(l)))
+  return { found, frozen }
+}
+
+// "AlbumDetail (verified), Shelf (implemented, through Card)": for a hook prompt, so the user sees what a change reaches.
+const reachNote = (target, specs, limit = 8) => {
+  const { found } = reliedOnBy(target, specs)
+  if (!found.length) return ""
+  const names = found.map(({ spec, parent }) => `${spec.name} (${statusOf(spec)}${parent ? `, through ${parent.name}` : ""})`)
+  const shown = names.length > limit ? [...names.slice(0, limit), `and ${names.length - limit} more`] : names
+  return ` Relied on by ${shown.join(", ")}; see node scripts/spec-lint.mjs --refs ${target.name}.`
+}
+
+const refsReport = (query, specs) => {
+  const [name, member] = query.split("#")
+  const target = specs.all.find((s) => s.name === name)
+  if (!target) return { error: `no spec named "${name ?? ""}"` }
+  if (member && !membersOf(target).includes(member)) {
+    const what = target.kind === "model" ? "field" : target.kind === "api" ? "error code" : "members"
+    return { error: ["model", "api"].includes(target.kind) ? `${name} has no ${what} "${member}" (known: ${membersOf(target).join(", ") || "none"})` : `${name} is a ${target.kind} spec; only models (#field) and APIs (#error_code) have members` }
+  }
+  const { found, frozen } = reliedOnBy(target, specs, member)
+  const label = `${query} (${target.kind}, ${statusOf(target)})`
+  const out = []
+  if (!found.length) out.push(`Nothing live relies on ${label}.`)
+  else {
+    out.push(`${label} is relied on by:`)
+    const depth = new Map([[target, 0]])
+    for (const row of found) depth.set(row.spec, depth.get(row.parent ?? target) + 1)
+    const width = Math.max(...found.map((r) => 2 * depth.get(r.spec) + r.spec.name.length))
+    const kindWidth = Math.max(...found.map((r) => r.spec.kind.length))
+    const statusWidth = Math.max(...found.map((r) => statusOf(r.spec).length))
+    // Print as a tree: each spec under the one it relies on through.
+    const print = (parent) => {
+      for (const row of found.filter((r) => (r.parent ?? target) === parent)) {
+        const indent = "  ".repeat(depth.get(row.spec))
+        out.push(`${(indent + row.spec.name).padEnd(width)}  ${row.spec.kind.padEnd(kindWidth)}  ${statusOf(row.spec).padEnd(statusWidth)}  ${row.where.join(", ")}`)
+        print(row.spec)
+      }
+    }
+    print(target)
+  }
+  if (frozen.length) out.push(`Also referenced by deprecated ${frozen.length === 1 ? "spec" : "specs"} ${frozen.map((s) => s.name).join(", ")}, which won't change.`)
+  return { text: out.join("\n") }
+}
+
 // ---------- summary ----------
 
 const walk = (dir, out = []) => {
@@ -878,9 +978,12 @@ const hookPre = () => {
     ? specs().live.filter((s) => s.name !== name && reliesOn(s, specs().byName).some((r) => r.spec.name === name))
     : []
   const verified = users.filter((s) => statusOf(s) === "verified").map((s) => s.name)
-  const reach = users.length
-    ? ` ${users.map((s) => s.name).join(", ")} ${users.length === 1 ? "relies" : "rely"} on ${name}${verified.length ? `; ${verified.join(", ")} will need re-verifying` : ""}.`
-    : ""
+  const reach = verified.length ? ` ${verified.join(", ")} will need re-verifying.` : ""
+  // Name everyone who relies on the spec, directly or through other specs, so the user sees what the change can
+  // reach without taking Claude's word for it. For a policy that includes specs that don't rely on its decision
+  // themselves but are built on ones that do (a flow through a screen that uses it).
+  const target = kind !== "tokens" && specs().all.find((s) => s.file === file)
+  const relied = target ? reachNote(target, specs()) : ""
   // Applying an amendment removes it from Open amendments; this prompt is where the user accepts it.
   const stillOpen = new Set(openAmendments(after).map((a) => a.id))
   const applied = openAmendments(before).filter((a) => !stillOpen.has(a.id))
@@ -888,12 +991,12 @@ const hookPre = () => {
     return decide(
       "ask",
       `Accept ${applied.map((a) => `amendment ${a.id} (${a.title})${a.change ? `: ${a.change}` : ""}`).join("; ")}? ` +
-        `This changes ${rel(file)}, touching: ${changed.join(", ")}.${reach} Approve to accept; deny to leave it open, and tell Claude if you'd rather reject it.`,
+        `This changes ${rel(file)}, touching: ${changed.join(", ")}.${relied}${reach} Approve to accept; deny to leave it open, and tell Claude if you'd rather reject it.`,
     )
   }
   decide(
     "ask",
-    `Spec change in ${rel(file)} (status: ${from} → ${to}), touching: ${changed.join(", ")}.${reach} ` +
+    `Spec change in ${rel(file)} (status: ${from} → ${to}), touching: ${changed.join(", ")}.${relied}${reach} ` +
       `Approve only if you agreed to this exact change; otherwise deny and ask Claude to propose it under "## Open amendments".`,
   )
 }
@@ -1130,7 +1233,14 @@ else if (has("--new")) {
   printResult(result)
   process.exit(result.error ? 1 : 0)
 } else if (has("--scaffold")) process.exit(scaffold())
-else if (has("--hash")) {
+else if (has("--refs")) {
+  const { text, error } = refsReport(argOf("--refs") ?? "", loadAll())
+  if (error) {
+    console.error(error)
+    process.exit(1)
+  }
+  console.log(text)
+} else if (has("--hash")) {
   const spec = loadAll().all.find((s) => s.name === argOf("--hash"))
   if (!spec) {
     console.error(`no spec named "${argOf("--hash") ?? ""}"`)

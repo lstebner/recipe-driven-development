@@ -20,6 +20,15 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   first heading renders as its own block in editors such as Mark Text. New specs get it from
   the templates; existing specs don't need it, and lint accepts both.
 
+- `node scripts/spec-lint.mjs --refs <Name>` lists every live spec that relies on a spec. That
+  includes specs relying on it through others (a flow that steps through a screen that uses the
+  component), each with its status and where the link is. `--refs Album#price` or
+  `--refs GetAlbum#not_found` narrows it to one field or error code, plus the specs that link to the
+  whole model or API. Claude runs it to fill in an amendment's Affects line, and the prompt for a
+  change to a protected spec now lists who relies on it. For a change to a policy's decision, that
+  includes specs built on the ones that rely on it. Run `install.sh --update` for the new script
+  and rules.
+
 ## 0.2.0 (2026-10-26)
 
 - Releases are made with two workflows: **Create a release** opens the release PR, and merging

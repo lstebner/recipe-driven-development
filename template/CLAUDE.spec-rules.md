@@ -18,7 +18,10 @@ and follows it; the user tastes the result before it's called done. The format i
   confirm or correct it, and suggest `/spec-review`.
 - **Never change an approved spec silently.** If implementation shows the spec is wrong,
   incomplete or impossible, add an entry under `## Open amendments` (Finding / Change / Affects /
-  Shared/one-off impact), tell the user in a sentence, and pause the work that depends on it. Then
+  Shared/one-off impact), tell the user in a sentence, and pause the work that depends on it.
+  Before writing Affects, or changing any spec others build on, run
+  `node scripts/spec-lint.mjs --refs <Name>` (or `<Name>#member` for one field or error code). Name
+  the specs it lists that the change really touches, and say which of them are verified. Then
   apply it in a single edit: merge the change, remove the entry, and add a dated line under
   `## Decisions`. The hook asks the user to accept it by name, and that prompt is their decision.
   If they deny it, leave the amendment open and ask whether to reject it; on reject, remove the

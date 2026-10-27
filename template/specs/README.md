@@ -553,9 +553,25 @@ an entry under `## Open amendments`, tells you in a sentence, and pauses any wor
 - Shared/one-off impact: none
 ```
 
+**Affects** comes from `node scripts/spec-lint.mjs --refs <Name>`, not from memory. It lists every
+live spec that relies on the one being changed, including specs that rely on it through another
+spec, with its status and where each link is:
+
+```
+$ node scripts/spec-lint.mjs --refs PrimaryButton
+PrimaryButton (component, approved) is relied on by:
+  AlbumDetail  screen  approved  layout, states
+    Checkout   flow    approved  step 1
+```
+
+`--refs GetAlbum#not_found` or `--refs Album#price` narrows it to the specs that use that one
+error code or field. That includes the specs that link to the whole API or model, marked
+`(all of Album)`: an API that returns `[[model:Album]]` returns its price too.
+
 Then it applies the amendment straight away: merges the change, removes the entry and adds a
 line to Decisions, all in one edit. That edit triggers a prompt naming the amendment
-("Accept amendment A1 (…)?"), and the prompt is your decision:
+("Accept amendment A1 (…)?"). The prompt also lists who relies on the spec, so you can see what
+the change can reach for yourself. The prompt is your decision:
 
 - **Accept** by approving it. Nothing else to do.
 - **Deny** to leave the amendment open. Tell Claude to reject it and it removes the entry and
@@ -574,6 +590,7 @@ line to Decisions, all in one edit. That edit triggers a prompt naming the amend
 - `node scripts/spec-lint.mjs --new <kind> <Name>`: create one draft spec from its template.
 - `node scripts/spec-lint.mjs --scaffold`: create a draft for every outline entry without a spec.
 - `node scripts/spec-lint.mjs --hash <Name>`: the spec's fingerprint, which `/spec-verify` stamps into its report.
+- `node scripts/spec-lint.mjs --refs <Name>[#member]`: every live spec that relies on it, directly or through other specs, with its status and where the link is.
 - `node scripts/spec-lint.mjs --version`: the version of the kit this repo has; see the kit's CHANGELOG.md for what each one changed.
 - `/spec-new [kind] <Name>[: what it's for]`: add a spec to the outline and draft it; with no arguments, draft everything in the outline that has no spec.
 - `/spec-review <Name>`: Claude critiques a spec before it's built.
