@@ -582,6 +582,31 @@ the change can reach for yourself. The prompt is your decision:
 - 2026-10-23: Rejected A2 (make ReleaseTimeline shared): only AlbumDetail needs it; revisit if a second screen does.
 ```
 
+## Decisions
+
+Decisions is the spec's history: one dated line per choice, saying what was decided and why.
+Accepted and rejected amendments, deprecations and revivals all land here, and so do trade-offs:
+a solution that's good enough for now when there's a better one you'd reach for later. Recording
+a trade-off stops anyone "fixing" something that was deliberate, and tells them when the fix is
+due. So say when to come back to it:
+
+```markdown
+## Decisions
+- 2026-10-26: Validation lives in makeAlbum, not the database; every write goes through it for now. Revisit when something else writes albums.
+```
+
+The revisit condition is what makes the line worth keeping. Give it something you'd notice
+(another screen needs it, a list passes 100 items, a second caller appears), not "someday". An
+idea with no condition is a wish: put it under the entry in `outline.md` or in your issue tracker
+instead.
+
+A revisit line isn't a task. Claude doesn't act on it until you ask, but if it sees the condition
+has been met while working, it tells you. Trade-offs only cover *how* the spec is met. One that
+changes what the spec says (a rule, a state, an error) is an amendment.
+
+Decisions isn't protected and isn't part of the fingerprint, so Claude can add lines without a
+prompt and a verified spec stays verified.
+
 ## Tools
 
 - `node scripts/spec-lint.mjs`: validate everything (also runs automatically after Claude edits).
