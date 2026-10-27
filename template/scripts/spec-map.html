@@ -86,7 +86,8 @@ ul.rules li { display: grid; grid-template-columns: 30px 1fr; flex-wrap: nowrap;
 .restkind { min-width: 90px; }
 .relies { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 12px; color: var(--muted); }
 .graph { position: relative; display: flex; gap: 56px; align-items: flex-start; overflow-x: auto; padding: 4px 4px 24px; }
-.graph svg { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+/* Links are drawn over the nodes, so one passing a column it skips is seen to pass it, not to start or end there. */
+.graph svg { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; z-index: 2; }
 .col { display: flex; flex-direction: column; gap: 8px; min-width: 150px; position: relative; z-index: 1; }
 .col h2 { margin: 0 0 4px; }
 .gnode { display: flex; align-items: center; gap: 7px; text-align: left; border: 1px solid var(--line); border-left: 3px solid var(--s); background: var(--panel); border-radius: 7px; padding: 6px 9px; cursor: pointer; }
@@ -97,6 +98,7 @@ ul.rules li { display: grid; grid-template-columns: 30px 1fr; flex-wrap: nowrap;
 path.edge { fill: none; stroke: var(--edge); stroke-width: 1.4; transition: opacity .15s; }
 path.edge.dep { stroke-dasharray: 4 4; }
 .lit path.edge { opacity: .12; } .lit path.edge.on { opacity: 1; stroke: var(--accent); stroke-width: 2; }
+#arrow path { fill: var(--edge); } #arrow-on path { fill: var(--accent); }
 .legend { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
 aside { position: fixed; right: 0; top: 0; bottom: 0; width: min(440px, 100vw); background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 40px; z-index: 10; box-shadow: -8px 0 24px rgba(0,0,0,.08); }
 aside .close { float: right; border: 0; background: var(--soft); border-radius: 6px; padding: 2px 9px; cursor: pointer; }
@@ -334,13 +336,24 @@ const graph = () => {
       el.classList.toggle("on", !!focus && (up.has(name) || down.has(name)))
       el.classList.toggle("focus", name === focus)
     }
-    for (const { el, from, to } of paths) el.classList.toggle("on", !!focus && ((up.has(from) && up.has(to)) || (down.has(from) && down.has(to))))
+    for (const { el, from, to } of paths) {
+      const on = !!focus && ((up.has(from) && up.has(to)) || (down.has(from) && down.has(to)))
+      el.classList.toggle("on", on)
+      el.setAttribute("marker-end", on ? "url(#arrow-on)" : "url(#arrow)")
+    }
   }
   drawEdges = () => {
     const box = wrap.getBoundingClientRect()
     edges.setAttribute("width", wrap.scrollWidth)
     edges.setAttribute("height", wrap.scrollHeight)
-    edges.replaceChildren()
+    const marker = (id) => {
+      const m = svg("marker", { id, viewBox: "0 0 8 8", refX: 7, refY: 4, markerWidth: 7, markerHeight: 7, orient: "auto" })
+      m.append(svg("path", { d: "M0,0 L8,4 L0,8 z" }))
+      return m
+    }
+    const defs = svg("defs", {})
+    defs.append(marker("arrow"), marker("arrow-on"))
+    edges.replaceChildren(defs)
     paths.length = 0
     for (const spec of data.specs) {
       for (const to of new Set(spec.links.map((l) => l.to))) {
