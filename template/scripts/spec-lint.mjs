@@ -28,7 +28,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 // The kit's version, shared by this script, the skills and the CLAUDE.md rules. Bump it with an entry in CHANGELOG.md.
-const VERSION = "0.2.0"
+const VERSION = "0.3.0"
 
 const args = process.argv.slice(2)
 const has = (flag) => args.includes(flag)
