@@ -191,6 +191,16 @@ mutate "raw value in Style"      expect_warn 'raw value "#fff"'                 
 mutate "missing required section" expect_err 'missing required section "## Goal"'  's/^## Goal/## Purpose/'
 echo 'import { PrimaryButton } from "x"' > "$repo/src/Other.tsx"
 mutate "implemented but import missing" expect_err "uses ArtistBadge but its source never imports it" 's/^status: approved/status: implemented/; s#^source: .*#source: [src/Other.tsx]#'
+mkdir -p "$repo/src/(shop,cart)" "$repo/src/a #1"
+cp "$repo/src/AlbumDetail.tsx" "$repo/src/(shop,cart)/page.tsx"; cp "$repo/src/AlbumDetail.tsx" "$repo/src/a #1/page.tsx"
+built='s/^status: approved/status: implemented/'
+mutate "a quoted source path keeps its commas"        expect_ok  "" "$built"'; s|^source: .*|source: ["src/(shop,cart)/page.tsx", src/AlbumDetail.tsx]|'
+mutate "  ...and so does one in brackets, unquoted"   expect_ok  "" "$built"'; s|^source: .*|source: [src/(shop,cart)/page.tsx]|'
+mutate "  ...or a single quoted path"                 expect_ok  "" "$built"'; s|^source: .*|source: '"'"'src/(shop,cart)/page.tsx'"'"'|'
+mutate "a # inside quotes isn't a comment"            expect_ok  "" "$built"'; s|^source: .*|source: ["src/a #1/page.tsx"]  # the first one|'
+mutate "a source list can be one item per line"       expect_ok  "" "$built"'; s|^source: .*|source:\n  - "src/(shop,cart)/page.tsx"\n  - src/AlbumDetail.tsx|'
+mutate "  ...and each item is checked"                expect_err 'source "src/Nope.tsx" doesn'"'"'t exist' "$built"'; s|^source: .*|source:\n  - src/AlbumDetail.tsx\n  - src/Nope.tsx|'
+rm -r "$repo/src/(shop,cart)" "$repo/src/a #1"
 mutate "draft with empty Rules is only a warning" expect_warn 'Rules needs at least one rule' 's/^status: approved/status: draft/; /^- AlbumDetail.R/d; s/→ R[12]//'
 cp "$screen" "$screen.bak"; sed -i 's/^status: approved/status: draft/; /^- AlbumDetail.R/d; s/→ R[12]//' "$screen"
 out="$(lint)" && pass "  ...and doesn't fail the lint" || fail "draft leniency" "$out"; mv "$screen.bak" "$screen"
