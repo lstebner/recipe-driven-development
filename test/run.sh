@@ -14,6 +14,7 @@ expect_err() { # expect_err <name> <substring>
   [[ $? -ne 0 && "$out" == *"$2"* ]] && pass "$1" || fail "$1" "$out"
 }
 expect_warn() { local out; out="$(lint)"; [[ "$out" == *"$2"* ]] && pass "$1" || fail "$1" "$out"; }
+expect_ok_warn() { local out; out="$(lint)"; [[ $? -eq 0 && "$out" == *"$2"* ]] && pass "$1" || fail "$1" "$out"; }  # warns, but doesn't fail
 hook() { # hook <pre|bash|post> <json>
   echo "$2" | CLAUDE_PROJECT_DIR="$repo" node "$repo/scripts/spec-lint.mjs" "--hook-$1" 2>&1
 }
@@ -238,8 +239,15 @@ mutate_in "$toggle" "a prop driving a state that isn't there" expect_err "drives
 mutate_in "$toggle" "a state named like code"             expect_err 'state "Pressed" should be a plain lowercase name' 's/^| pressed |/| Pressed |/'
 mutate_in "$toggle" "a state that depends on a missing prop" expect_err 'state on depends on `checked`, which isn'"'"'t in Props' 's/| `on` is true |/| `checked` is true |/'
 mutate_in "$toggle" "a duplicate prop"                    expect_err 'duplicate key "on" in Props'           's/^| `disabled` | boolean | no | false | → state disabled |/| `on` | boolean | no | false | |/'
-mutate_in "$toggle" "wrong columns"                       expect_err "States's columns should be | state | when | looks like |" 's/^| state | when | looks like |/| state | looks like |/'
-mutate_in "$toggle" "a line outside the table"            expect_err "Props has a line outside its table"    's/^|---|---|---|---|---|$/&\n- also: not pressable/'
+mutate_in "$toggle" "a table in another layout only warns" expect_ok_warn "States's table isn't in the current format, | state | when | looks like | (got | state | looks like |), so its rows aren't checked" 's/^| state | when | looks like |/| state | looks like |/'
+mutate_in "$toggle" "  ...and its rows aren't checked, even in the wrong order" expect_ok_warn "isn't in the current format" 's/^| state | when | looks like |/| when | state | looks like |/'
+mutate_in "$toggle" "a line outside the table only warns" expect_ok_warn "Props has a line outside its table"    's/^|---|---|---|---|---|$/&\n- also: not pressable/'
+mutate_in "$toggle" "a union type can be written with \\|" expect_ok ""                                        's/^| `onChange` | (on: boolean) => void |/| `onChange` | (on: boolean) => void \\| null |/'
+mutate_in "$toggle" "  ...and an unescaped | says how"    expect_err 'prop `onChange` has 6 cells for 5 columns; write a | inside a cell as \|' 's/^| `onChange` | (on: boolean) => void |/| `onChange` | (on: boolean) => void | null |/'
+mutate_in "$toggle" "a hyphenated prop name"              expect_ok ""                                        's/^| `disabled` |/| `aria-label` | string | no | | |\n| `disabled` |/'
+mutate_in "$toggle" "\"when\" can be an expression, starting with the prop" expect_ok ""                        's/| `on` is true |/| `on === true` |/; s/| `disabled` is true |/| `disabled.valueOf()` |/'
+mutate_in "$toggle" "  ...but the prop it starts with is still checked" expect_err 'state on depends on `checked`' 's/| `on` is true |/| `checked === true` |/'
+mutate_in "$toggle" "a Props list's tokens aren't checked, as before the tables" expect_ok_warn "Props is a list" '/^| `\|^| prop\|^|---|---|---|---|---|$/d; s/^## Props$/## Props\n- on (required), uses $color.nope/'
 mutate_in "$toggle" "notes that read like a rule warn"    expect_warn "prop \`on\`'s notes read like a rule"  's/| → state on |/| → state on; must be set |/'
 mutate_in "$toggle" "a list in Props warns, pointing at /spec-migrate" expect_warn "Props is a list: write it as a table, | prop | type | required | default | notes | (/spec-migrate Toggle converts it)" '/^| `\|^| prop\|^|---|---|---|---|---|$/d; s/^## Props$/## Props\n- on (required), onChange, disabled/'
 mutate_in "$toggle" "the old Props / States section warns" expect_warn '"## Props / States" is the old format: split it into a ## Props table and a ## States table, and move guidelines into ## Rules (/spec-migrate Toggle converts it)' 's/^## Purpose$/## Props \/ States\n- on (required)\n\n## Purpose/'
@@ -250,7 +258,12 @@ cp "$button" "$button.orig"
 sed -i 's/^## Must not$/## Props\n| prop | type | required | default | notes |\n|---|---|---|---|---|\n| `label` | string | yes | | |\n| `loading` | boolean | no | false | |\n\n## Must not/' "$button"
 mutate "a screen can set a component's props"         expect_ok   ""                                         's/\[\[PrimaryButton\]\]/[[PrimaryButton loading=true]]/'
 mutate "  ...but only ones it has"                     expect_err  'PrimaryButton has no prop "busy" (known: label, loading)' 's/\[\[PrimaryButton\]\]/[[PrimaryButton busy=true]]/'
+mutate "  ...and a = inside a value isn't another prop" expect_ok   ""                                         's|\[\[PrimaryButton\]\]|[[PrimaryButton label=/search?q=jazz]]|'
+mv "$button.orig" "$button"; cp "$button" "$button.orig"
+sed -i 's/^## Must not$/## Props\n- label (required), loading\n\n## Must not/' "$button"
+mutate "a component whose Props is a list doesn't fail the props set on it" expect_ok ""                       's/\[\[PrimaryButton\]\]/[[PrimaryButton loading=true]]/'
 mv "$button.orig" "$button"
+mutate "a States table from before the format lints clean, with a warning" expect_ok_warn "isn't in the current format" 's/^## Rules$/## States\nEach state replaces the body.\n\n| state | shows |\n|---|---|\n| loading | a skeleton |\n| loading | twice, by mistake |\n\n## Rules/'
 mutate "a screen's States table lints clean"           expect_ok   ""                                         's/^## Rules$/## States\n| state | when | looks like |\n|---|---|---|\n| loading | fetching | skeleton; no [[PrimaryButton]] |\n\n## Rules/'
 mutate "  ...and its refs are still checked"           expect_err  "[[Ghost]] has no spec"                    's/^## Rules$/## States\n| state | when | looks like |\n|---|---|---|\n| loading | fetching | skeleton; no [[Ghost]] |\n\n## Rules/'
 mutate "a screen's States list warns"                  expect_warn "States is a list: write it as a table, | state | when | looks like | (/spec-migrate AlbumDetail converts it)" 's/^## Rules$/## States\n- loading: skeleton\n\n## Rules/'

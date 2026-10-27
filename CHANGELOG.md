@@ -51,8 +51,9 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   names, with what puts the component in them and what it looks like; behaviour ("not pressable")
   is a rule, with an ID and a test. A prop that drives a state says `→ state <name>`, and lint
   checks both ends. It also checks that a screen's `[[Component prop=…]]` only sets props the
-  component has. A screen's States section is the same table. Specs in the old format still
-  lint, with a warning, and the new `/spec-migrate` skill converts them. It converts verified
+  component has. A screen's States section is the same table. Write a `|` inside a cell as `\|`
+  (for a union type). Specs in the old format, or with a Props or States table in another layout,
+  still lint, with a warning, and the new `/spec-migrate` skill converts them. It converts verified
   specs, and components with verified specs built from them, only if you say so, since converting
   sends those back to be re-verified or flags them for an audit. Run `install.sh --update` for
   the new templates, skill and rules.

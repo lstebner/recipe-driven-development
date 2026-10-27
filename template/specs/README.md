@@ -330,10 +330,13 @@ Required section: **Purpose**. A component can compose other shared components: 
 **Props, States and Rules** keep three different things apart:
 
 - **Props** are the component's inputs, its contract with whatever renders it: one row each,
-  named in backticks exactly as in code, with a type, `yes` or `no` for required, and the default.
+  named in backticks exactly as in code (`` `aria-label` `` is fine), with a type, `yes` or `no`
+  for required, and the default. Write a `|` inside a cell as `\|`, so a union type is
+  `` `"default" \| "quiet"` ``. An unescaped one starts a new column.
 - **States** are the conditions it can be in and what it looks like in each: one row each, named
   in plain lowercase. "when" says what puts it there: a prop in backticks, or an event ("while
-  held").
+  held"). Code there can be an expression (`` `items.length` is 0 ``); lint checks the prop it
+  starts with.
 - **Rules** are what it must or must never do. They get IDs, tests and a row in its report, like
   a screen's.
 
@@ -344,6 +347,9 @@ that read like a rule ("must", "never") get a warning: move them to Rules or Mus
 
 A spec written before these tables has a single `## Props / States` list. Lint warns about it,
 and `/spec-migrate <Name>` converts it (see [Migrating to the tables](#migrating-to-the-tables)).
+So does a Props or States section that's a list, or a table with other columns. Lint only checks
+rows, and what other specs set on the component, once a section's header is exactly the one
+above. Until then, a spec that linted clean before the tables existed still does.
 
 ## Flow spec
 
