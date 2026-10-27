@@ -16,6 +16,8 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
 
 ## Unreleased
 
+## 0.3.0 (2026-10-27)
+
 - The spec templates leave a blank line after the closing `---` of the frontmatter, so the
   first heading renders as its own block in editors such as Mark Text. New specs get it from
   the templates; existing specs don't need it, and lint accepts both.
