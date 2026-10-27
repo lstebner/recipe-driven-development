@@ -2,6 +2,7 @@
 policy: CanBuyAlbum
 status: approved
 ---
+
 ## Purpose
 Whether a listener can buy an album, already owns it, or can't get it at all. AlbumDetail decides
 what to show from it, GetAlbum reports it, and CreateOrder enforces it, so all three must agree.

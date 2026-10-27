@@ -3,6 +3,7 @@ api: CreateOrder
 status: draft
 endpoint: POST /orders
 ---
+
 ## Purpose
 Buy an album.
 

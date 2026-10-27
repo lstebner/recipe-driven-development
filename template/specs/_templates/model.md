@@ -2,6 +2,7 @@
 model: ModelName
 status: draft
 ---
+
 ## Purpose
 <!-- What this entity represents, in one line. -->
 

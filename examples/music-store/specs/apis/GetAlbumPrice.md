@@ -5,6 +5,7 @@ deprecated: 2026-10-20
 replaced_by: GetAlbum
 endpoint: GET /albums/{id}/price
 ---
+
 ## Purpose
 Fetch an album's current price, so the detail page can show it.
 

@@ -2,6 +2,7 @@
 component: PrimaryButton
 status: approved
 ---
+
 ## Purpose
 The single call-to-action on a screen.
 

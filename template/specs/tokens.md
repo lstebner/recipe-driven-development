@@ -1,6 +1,7 @@
 ---
 status: draft
 ---
+
 # Design tokens
 
 Reference these as `$name` in specs (e.g. `$color.accent`). Add a token here before using it.

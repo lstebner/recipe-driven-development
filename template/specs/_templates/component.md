@@ -2,6 +2,7 @@
 component: ComponentName
 status: draft
 ---
+
 ## Purpose
 <!-- What it's for, in one line. If it resembles an existing component, say why it isn't a variant of it. -->
 
