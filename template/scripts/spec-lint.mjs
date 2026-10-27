@@ -673,26 +673,30 @@ const linksOf = (spec, byName) => {
 
 // The live specs that rely on `target`: those that link to it, then those that link to them, and so on, each
 // listed once at the shortest distance, as { spec, parent, where }. With a member (a model field or API error code),
-// only links to that member count at the first step. Deprecated specs are frozen, so they're returned apart.
+// the first step counts links to that member and links to the whole target, which take in every member (an API
+// that returns [[model:Album]] returns its price too), but not links to its other members. Those whole-target
+// links are marked in `where`. Deprecated specs are frozen, so they're returned apart.
 const reliedOnBy = (target, specs, member) => {
   const byName = byNameOf(specs.all)
   const links = specs.live.flatMap((s) => linksOf(s, byName))
+  const reaches = (l) => !member || l.member === member || l.member === undefined
+  const whereOf = (l) => (member && l.target === target && l.member === undefined ? `${l.where} (all of ${target.name})` : l.where)
   const found = []
   const seen = new Set([target])
   let frontier = [target]
   while (frontier.length) {
     const next = []
     for (const node of frontier) {
-      const into = links.filter((l) => l.target === node && !seen.has(l.from) && (node !== target || !member || l.member === member))
+      const into = links.filter((l) => l.target === node && !seen.has(l.from) && (node !== target || reaches(l)))
       for (const from of [...new Set(into.map((l) => l.from))].sort((a, b) => a.name.localeCompare(b.name))) {
         seen.add(from)
-        found.push({ spec: from, parent: node === target ? null : node, where: [...new Set(into.filter((l) => l.from === from).map((l) => l.where))] })
+        found.push({ spec: from, parent: node === target ? null : node, where: [...new Set(into.filter((l) => l.from === from).map(whereOf))] })
         next.push(from)
       }
     }
     frontier = next
   }
-  const frozen = specs.deprecated.filter((s) => linksOf(s, byName).some((l) => l.target === target && (!member || l.member === member)))
+  const frozen = specs.deprecated.filter((s) => linksOf(s, byName).some((l) => l.target === target && reaches(l)))
   return { found, frozen }
 }
 
@@ -974,11 +978,11 @@ const hookPre = () => {
     ? specs().live.filter((s) => s.name !== name && reliesOn(s, specs().byName).some((r) => r.spec.name === name))
     : []
   const verified = users.filter((s) => statusOf(s) === "verified").map((s) => s.name)
-  const reach = users.length
-    ? ` ${users.map((s) => s.name).join(", ")} ${users.length === 1 ? "relies" : "rely"} on ${name}${verified.length ? `; ${verified.join(", ")} will need re-verifying` : ""}.`
-    : ""
-  // Anything else: name who relies on it, so the user sees what the change can reach without taking Claude's word.
-  const target = !reach && kind !== "tokens" && specs().all.find((s) => s.file === file)
+  const reach = verified.length ? ` ${verified.join(", ")} will need re-verifying.` : ""
+  // Name everyone who relies on the spec, directly or through other specs, so the user sees what the change can
+  // reach without taking Claude's word for it. For a policy that includes specs that don't rely on its decision
+  // themselves but are built on ones that do (a flow through a screen that uses it).
+  const target = kind !== "tokens" && specs().all.find((s) => s.file === file)
   const relied = target ? reachNote(target, specs()) : ""
   // Applying an amendment removes it from Open amendments; this prompt is where the user accepts it.
   const stillOpen = new Set(openAmendments(after).map((a) => a.id))
@@ -987,12 +991,12 @@ const hookPre = () => {
     return decide(
       "ask",
       `Accept ${applied.map((a) => `amendment ${a.id} (${a.title})${a.change ? `: ${a.change}` : ""}`).join("; ")}? ` +
-        `This changes ${rel(file)}, touching: ${changed.join(", ")}.${reach}${relied} Approve to accept; deny to leave it open, and tell Claude if you'd rather reject it.`,
+        `This changes ${rel(file)}, touching: ${changed.join(", ")}.${relied}${reach} Approve to accept; deny to leave it open, and tell Claude if you'd rather reject it.`,
     )
   }
   decide(
     "ask",
-    `Spec change in ${rel(file)} (status: ${from} → ${to}), touching: ${changed.join(", ")}.${reach}${relied} ` +
+    `Spec change in ${rel(file)} (status: ${from} → ${to}), touching: ${changed.join(", ")}.${relied}${reach} ` +
       `Approve only if you agreed to this exact change; otherwise deny and ask Claude to propose it under "## Open amendments".`,
   )
 }

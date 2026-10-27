@@ -565,7 +565,8 @@ PrimaryButton (component, approved) is relied on by:
 ```
 
 `--refs GetAlbum#not_found` or `--refs Album#price` narrows it to the specs that use that one
-error code or field.
+error code or field. That includes the specs that link to the whole API or model, marked
+`(all of Album)`: an API that returns `[[model:Album]]` returns its price too.
 
 Then it applies the amendment straight away: merges the change, removes the entry and adds a
 line to Decisions, all in one edit. That edit triggers a prompt naming the amendment

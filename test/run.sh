@@ -263,7 +263,11 @@ out="$(refs PrimaryButton)"
 [[ "$out" == "PrimaryButton (component, approved) is relied on by:"* && "$out" == *$'\n  AlbumDetail  screen  approved  layout'* && "$out" == *$'\n    Checkout   flow    approved  step 1'* ]] \
   && pass "--refs lists who relies on a component, and who relies on them" || fail "--refs component" "$out"
 out="$(refs Album)"; [[ "$out" == *"GetAlbum"*"response"* && "$out" == *"Checkout"*"step 2"* ]] && pass "--refs names the section or step of each link" || fail "--refs model" "$out"
-out="$(refs Album#price)"; [[ "$out" == *Checkout* && "$out" != *GetAlbum* ]] && pass "--refs Name#field lists only links to that field" || fail "--refs field" "$out"
+out="$(refs Album#price)"
+[[ "$out" == *"Checkout  flow  approved  step 2"* && "$out" == *"GetAlbum  api   approved  response (all of Album)"* ]] \
+  && pass "--refs Name#field lists links to that field, and to the whole model, marked" || fail "--refs field" "$out"
+out="$(refs Album#id)"; [[ "$out" == *$'\n  GetAlbum'* && "$out" != *$'\n  Checkout'* && "$out" == *$'\n    Checkout'* ]] \
+  && pass "  ...but not links to its other fields (Checkout only through GetAlbum)" || fail "--refs other field" "$out"
 out="$(refs GetAlbum#not_found)"; [[ "$out" == *"Checkout"*"step 1"* ]] && pass "--refs Name#error_code too" || fail "--refs error code" "$out"
 out="$(refs Album#cost)"; [[ $? -eq 1 && "$out" == *'Album has no field "cost" (known: id, price)'* ]] && pass "--refs refuses a member that isn't there" || fail "--refs bad member" "$out"
 out="$(refs Checkout)"; [[ "$out" == "Nothing live relies on Checkout (flow, approved)." ]] && pass "--refs says when nothing relies on a spec" || fail "--refs none" "$out"
@@ -353,9 +357,12 @@ printf '# MobileNav: verification report\nSpec: %s\n\n| rule | result | evidence
 sed -i 's/^status: approved/status: verified/' "$nav"
 expect_ok "a verified spec that relies on a policy lints clean"
 mutate_in "$policy" "changing a policy makes a verified spec that relies on it stale" expect_err "older version of the spec or a policy it relies on (NavLinks)" 's/see Home and Sign in./see Home only./'
+printf -- '---\nscreen: Home\nstatus: draft\n---\n## Goal\nStart here.\n\n## Layout\n- [[MobileNav]]\n\n## Rules\n- R1: Shows the nav.\n' > "$repo/specs/screens/Home.md"
 out="$(hook pre "$(edit_json "$policy" "see Home and Sign in." "see Home only.")")"
-[[ "$out" == *'"permissionDecision":"ask"'* && "$out" == *"Rules"* && "$out" == *"DesktopNav, MobileNav rely on NavLinks; MobileNav will need re-verifying."* ]] \
-  && pass "pre: changing a policy asks, naming the specs that rely on it" || fail "pre: policy Rules" "$out"
+[[ "$out" == *'"permissionDecision":"ask"'* && "$out" == *"Rules"* \
+  && "$out" == *"Relied on by DesktopNav (approved), MobileNav (verified), Home (draft, through MobileNav); see node scripts/spec-lint.mjs --refs NavLinks. MobileNav will need re-verifying."* ]] \
+  && pass "pre: changing a policy's decision names everyone it reaches, and who needs re-verifying" || fail "pre: policy Rules" "$out"
+rm "$repo/specs/screens/Home.md"
 out="$(hook pre "$(deprecate_json "$policy" $'status: deprecated\ndeprecated: 2026-10-25' "- 2026-10-25: Deprecated: navigation moved to the sidebar.")")"
 [[ "$out" == *'"ask"'* && "$out" == *"get a lint warning (DesktopNav, MobileNav)"* ]] && pass "pre: deprecating a policy names the specs that rely on it" || fail "pre: deprecate policy" "$out"
 cp "$policy" "$policy.bak"; sed -i 's/^status: approved$/status: deprecated\ndeprecated: 2026-10-25/' "$policy"
@@ -378,7 +385,8 @@ cp "$policy" "$policy.bak"; sed -i 's/^Which navigation links a visitor sees.$/W
 [[ "$(lint --hash MobileNav)" == "$navhash" ]] && pass "editing a policy's Purpose leaves dependent fingerprints alone" || fail "policy Purpose in fingerprint" "$(lint --hash MobileNav)"
 mv "$policy.bak" "$policy"
 out="$(hook pre "$(edit_json "$policy" "Which navigation links a visitor sees." "Which links a visitor sees.")")"
-[[ "$out" == *'"ask"'* && "$out" != *"rely on NavLinks"* && "$out" != *"relies on NavLinks"* ]] && pass "pre: a Purpose edit to a policy doesn't send anyone back to re-verify" || fail "pre: policy Purpose" "$out"
+[[ "$out" == *'"ask"'* && "$out" == *"Relied on by DesktopNav (approved), MobileNav (verified)"* && "$out" != *"re-verifying"* ]] \
+  && pass "pre: a Purpose edit to a policy names who relies on it, but sends no one back to re-verify" || fail "pre: policy Purpose" "$out"
 order="$repo/specs/policies/NavOrder.md"
 printf -- '---\npolicy: NavOrder\nstatus: approved\n---\n## Purpose\nThe order navigation links appear in.\n\n## Rules\n- R1: Home always comes first.\n' > "$order"
 sed -i 's/^- NavLinks.R1: Signed-out visitors see Home and Sign in.$/- NavLinks.R1: Signed-out visitors see Home and Sign in, ordered by [[policy:NavOrder]]./' "$policy"
@@ -388,11 +396,12 @@ sed -i "s/^Spec: .*/Spec: $chainhash/" "$repo/specs/_reports/MobileNav.md"
 expect_ok "a spec that relies on a chain of policies lints clean"
 mutate_in "$order" "changing a policy reached through another makes the spec stale, naming the trail" expect_err "a policy it relies on (NavLinks, NavOrder (through NavLinks))" 's/Home always comes first./Home always comes last./'
 out="$(hook pre "$(edit_json "$order" "Home always comes first." "Home always comes last.")")"
-[[ "$out" == *"DesktopNav, MobileNav, NavLinks rely on NavOrder; MobileNav will need re-verifying."* ]] && pass "pre: changing it names every spec it reaches, through other policies too" || fail "pre: policy chain" "$out"
+[[ "$out" == *"Relied on by NavLinks (approved), DesktopNav (approved, through NavLinks), MobileNav (verified, through NavLinks); see node scripts/spec-lint.mjs --refs NavOrder. MobileNav will need re-verifying."* ]] \
+  && pass "pre: changing it names every spec it reaches, through other policies too" || fail "pre: policy chain" "$out"
 mutate_in "$order" "a draft policy reached through another is caught too" expect_err "[[policy:NavOrder]] (through NavLinks) is still a draft" 's/^status: approved$/status: draft/'
 mv "$nav" "$nav.bak"; mv "$repo/specs/components/DesktopNav.md" "$repo/specs/components/DesktopNav.md.bak"
 out="$(hook pre "$(edit_json "$order" "Home always comes first." "Home always comes last.")")"
-[[ "$out" == *" NavLinks relies on NavOrder."* ]] && pass "pre: one spec relies, several rely" || fail "pre: grammar" "$out"
+[[ "$out" == *"Relied on by NavLinks (approved); see"* && "$out" != *"re-verifying"* ]] && pass "  ...and asks for no re-verifying when nothing verified is reached" || fail "pre: nothing verified" "$out"
 mv "$nav.bak" "$nav"; mv "$repo/specs/components/DesktopNav.md.bak" "$repo/specs/components/DesktopNav.md"; rm "$order"
 rm "$policy" "$nav" "$repo/specs/components/DesktopNav.md" "$repo/specs/_reports/MobileNav.md"; lint --fix >/dev/null
 
