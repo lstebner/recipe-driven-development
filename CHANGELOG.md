@@ -52,8 +52,9 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   is a rule, with an ID and a test. A prop that drives a state says `→ state <name>`, and lint
   checks both ends. It also checks that a screen's `[[Component prop=…]]` only sets props the
   component has. A screen's States section is the same table. Specs in the old format still
-  lint, with a warning, and the new `/spec-migrate` skill converts them (verified ones only if
-  you say so, since converting sends them back to be re-verified). Run `install.sh --update` for
+  lint, with a warning, and the new `/spec-migrate` skill converts them. It converts verified
+  specs, and components with verified specs built from them, only if you say so, since converting
+  sends those back to be re-verified or flags them for an audit. Run `install.sh --update` for
   the new templates, skill and rules.
 
 ## 0.2.0 (2026-10-26)

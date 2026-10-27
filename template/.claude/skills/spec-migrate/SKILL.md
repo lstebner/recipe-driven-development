@@ -16,11 +16,19 @@ new versions side by side and see the same recipe. The format is in `specs/READM
 1. **Find the specs.** Run `node scripts/spec-lint.mjs` and collect the specs it warns about:
    `"## Props / States" is the old format`, or `States is a list`. With names given, take just
    those. Skip `deprecated` specs: they're frozen and stay as they are.
-2. **Ask about verified ones.** Converting a `verified` spec changes its fingerprint, so its
-   report goes stale: it goes back to `implemented` and needs `/spec-verify` again. List the
-   verified specs and ask which, if any, to include. Leave the rest alone. They keep working,
-   with a lint warning, until they next change for another reason. Drafts, approved and
-   implemented specs are migrated without asking.
+2. **Ask about what converting costs.** Converting a spec changes its fingerprint, and two
+   kinds of spec pay for that:
+   - **A verified spec:** its report goes stale, so it goes back to `implemented` and needs
+     `/spec-verify` again.
+   - **The verified specs built from a component:** converting the component flags each of them
+     for an audit, and clearing that means re-running `/spec-verify` on it. Run
+     `node scripts/spec-lint.mjs --refs <Component>` for each component you'd convert; the specs
+     it marks `(will need an audit)` are the ones.
+
+   List both and ask which, if any, to include. A component whose conversion would flag verified
+   specs counts as one to ask about, even if it isn't verified itself. Leave the rest alone. They
+   keep working, with a lint warning, until they next change for another reason. Everything
+   else (drafts, and approved or implemented specs that flag nothing) is migrated without asking.
 3. **Convert each spec**, reading its `source` files for a component:
    - **Props:** one row per prop, named in backticks exactly as in code. Take the type,
      whether it's required, and the default from the code. Where the code doesn't say, or there's
@@ -38,7 +46,8 @@ new versions side by side and see the same recipe. The format is in `specs/READM
    - **draft:** edit it directly.
    - **approved or implemented:** as an amendment (see `specs/README.md`). Finding: "written
      before the Props and States tables". Change: the conversion, naming any new Rules.
-     Affects: none. Then apply it: merge the change, remove the entry, and add a dated line under
+     Affects: what `--refs` lists, saying which of those specs will need an audit. The rest only
+     relied on the spec; a change in format doesn't change what they build on. Then apply it: merge the change, remove the entry, and add a dated line under
      `## Decisions` ("Moved Props / States into the Props and States tables; 'not pressable'
      became R1"). The user accepts it at the prompt.
    - **verified, if the user included it:** first set `status: implemented`, which needs no
@@ -50,7 +59,8 @@ new versions side by side and see the same recipe. The format is in `specs/READM
    - **your guesses** (types, defaults, anything you read into the old wording), so the user can
      correct them;
    - new Rules that have no tagged test yet;
-   - the specs that need `/spec-verify` again, which you can offer to run.
+   - the specs that need `/spec-verify` again, because they were verified or are now flagged
+     for an audit, which you can offer to run.
 
 Never edit a report, and never set `verified`: re-verifying is `/spec-verify`'s job, and the
 taste test is the user's.

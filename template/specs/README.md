@@ -613,8 +613,9 @@ heading. Lint warns about each, and they keep working. To convert them, run `/sp
 - converts a draft directly, and an approved or implemented spec through an amendment, so you
   accept each at the prompt;
 - leaves **verified** specs alone unless you say otherwise. Converting one changes its
-  fingerprint, so it goes back to `implemented` and needs `/spec-verify` again. Claude lists them
-  and asks which to include.
+  fingerprint, so it goes back to `implemented` and needs `/spec-verify` again. The same goes for
+  a component with verified specs built from it: converting it flags each of them for an
+  [audit](#changing-a-spec). Claude lists both, using `--refs`, and asks which to include.
 
 ## Shared vs one-off
 
