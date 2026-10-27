@@ -59,6 +59,12 @@ and follows it; the user tastes the result before it's called done. The format i
   `specs/models/` entity rather than redefining its fields inline, and get a decision from its
   `specs/policies/` spec rather than working it out again where it's used. When a decision that
   more than one spec needs isn't in a policy yet, suggest one rather than restating it in each.
+- **Changing a component** can reach every spec made from it, but doesn't send them back to be
+  re-verified. Instead, when a hook or lint names specs to audit after a component change, tell
+  the user and offer to check each: whether the change affects it, which is an amendment or a bug
+  if so. Re-running `/spec-verify` on a spec records the components as they are now. A component
+  amendment's Affects line comes from `--refs`, like any other; say which of those specs will need an
+  audit.
 - **Tests** that check a rule include its full ID in brackets: `it("[AlbumDetail.R1] ...")`.
 - **Verification** checks the spec as written. Never weaken a test or reinterpret a rule to make
   it pass; a mismatch is either a bug or an amendment. Mark a rule 👤 only when a person genuinely
