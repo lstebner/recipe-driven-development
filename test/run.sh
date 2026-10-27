@@ -333,6 +333,7 @@ sed 's/^flow: Checkout$/flow: OldCheckout/; s/^status: approved$/status: depreca
 out="$(refs AlbumDetail)"; [[ "$out" == *"Also referenced by deprecated spec OldCheckout, which won't change."* && "$out" != *"  OldCheckout"* ]] \
   && pass "--refs lists deprecated specs apart" || fail "--refs deprecated" "$out"
 rm "$repo/specs/flows/OldCheckout.md"
+printf -- '---\ncomponent: Switch\nstatus: draft\n---\n## Purpose\nOn or off.\n\n## States\n| state | when | looks like |\n|---|---|---|\n| on | while switched on | knob to the right |\n| disabled | while it can'"'"'t be changed | 50%% opacity |\n' > "$repo/specs/components/Switch.md"
 out="$(lint --map AlbumDetail)"; map="$repo/specs/.map.html"
 [[ $? -eq 0 && -f "$map" && "$out" == *"wrote specs/.map.html; open file://$map#AlbumDetail"* ]] && pass "--map writes the spec map and says how to open it" || fail "--map" "$out"
 mapped="$(node -e '
@@ -341,13 +342,14 @@ mapped="$(node -e '
   const data = JSON.parse(json), spec = (n) => data.specs.find((s) => s.name === n)
   const body = spec("AlbumDetail").layout.find((n) => n.content === "Body")
   console.log([html.startsWith("<!doctype html>"), !json.includes("</"), spec("AlbumDetail").layout[0].label, body.wide, body.narrow,
-    JSON.stringify(body.children[1].cond), body.children[1].rules.join(","), spec("Checkout").links.map((l) => l.to + (l.member ? "#" + l.member : "")).join(",")].join(" "))' "$map")"
-[[ "$mapped" == 'true true Header row stack {"not":true,"name":"owned"} R1 AlbumDetail,GetAlbum,GetAlbum#not_found,Album#price' ]] \
-  && pass "  ...with each Layout as a tree (regions, responsive, conditions, rules) and every link" || fail "--map data" "$mapped"
+    JSON.stringify(body.children[1].cond), body.children[1].rules.join(","), spec("Checkout").links.map((l) => l.to + (l.member ? "#" + l.member : "")).join(","),
+    JSON.stringify(spec("Switch").states[1])].join(" "))' "$map")"
+[[ "$mapped" == 'true true Header row stack {"not":true,"name":"owned"} R1 AlbumDetail,GetAlbum,GetAlbum#not_found,Album#price {"name":"disabled","when":"while it can'"'"'t be changed","looks":"50% opacity"}' ]] \
+  && pass "  ...with each Layout as a tree (regions, responsive, conditions, rules), States rows and every link" || fail "--map data" "$mapped"
 [[ ! -e "$repo/scripts/spec-map.html" ]] && grep -q '^const MAP_PAGE = "<!doctype html>' "$repo/scripts/spec-lint.mjs" && [[ "$(stat -c %a "$repo/scripts/spec-lint.mjs")" == 644 ]] \
   && pass "  ...from the page install built into spec-lint.mjs, so a repo has one file to run" || fail "--map bundled" "$(ls -l "$repo/scripts")"
 out="$(lint --map Nope)"; [[ $? -eq 1 && "$out" == *'no spec named "Nope"'* ]] && pass "--map refuses an unknown spec" || fail "--map unknown" "$out"
-rm -f "$map"
+rm -f "$map" "$repo/specs/components/Switch.md"
 out="$(hook pre "$(edit_json "$repo/specs/components/PrimaryButton.md" "The PrimaryButton." "Anything.")")"
 [[ "$out" == *'"ask"'* && "$out" == *"Relied on by AlbumDetail (approved), Checkout (approved, through AlbumDetail); see node scripts/spec-lint.mjs --refs PrimaryButton."* ]] \
   && pass "pre: a protected change names who relies on the spec" || fail "pre: relied on by" "$out"

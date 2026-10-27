@@ -78,6 +78,8 @@ h4 { margin: 12px 0 4px; font-size: 12px; color: var(--muted); text-transform: u
 .token, code { font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
 ul.plain { list-style: none; padding: 0; margin: 0; }
 ul.plain li { padding: 3px 0; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+ul.states li { display: grid; grid-template-columns: minmax(70px, auto) 1fr; gap: 10px; flex-wrap: nowrap; }
+.state { font-weight: 600; }
 ul.rules li { display: grid; grid-template-columns: 30px 1fr; flex-wrap: nowrap; }
 .steps li.branch { padding-left: 22px; color: var(--muted); }
 .steps .num { font-weight: 600; min-width: 16px; }
@@ -254,10 +256,19 @@ const reliesOn = (spec, skipComponents) => {
   const targets = [...new Set(spec.links.filter((l) => !skipComponents || byName.get(l.to).kind !== "component").map((l) => l.to))]
   return targets.length > 0 && h("div", { class: "relies" }, "Relies on", targets.map((t) => chip(t)))
 }
+const statesBlock = (spec) =>
+  spec.states.length > 0 && [
+    h("h4", null, "States"),
+    h("ul", { class: "plain states" },
+      spec.states.map((s) =>
+        s.name
+          ? h("li", null, h("span", { class: "state" }, s.name), h("span", null, s.when && h("span", { class: "where" }, inline(s.when, spec), " → "), inline(s.looks ?? "", spec)))
+          : h("li", null, inline(s.text, spec)))),
+  ]
 const card = (spec, body) =>
   h("article", { class: `card${state.selected === spec.name ? " sel" : ""}`, id: `card-${spec.name}` },
     head(spec), spec.about && h("p", { class: "about" }, inline(spec.about, spec)), body,
-    spec.states.length > 0 && [h("h4", null, "States"), h("ul", { class: "plain" }, spec.states.map((s) => h("li", null, inline(s, spec))))],
+    statesBlock(spec),
     reliesOn(spec, true))
 const layouts = () => {
   const visible = data.specs.filter((s) => shown(s))
@@ -378,6 +389,7 @@ const drawer = (spec) => {
     spec.status === "deprecated" && h("div", { class: "note" }, `Deprecated ${spec.deprecated ?? ""}`, spec.replacedBy.length > 0 && [": replaced by ", spec.replacedBy.map((r) => chip(r))]),
     spec.layout && [h("h4", null, "Layout"), layoutBlock(spec)],
     spec.steps.length > 0 && [h("h4", null, "Steps"), stepsBlock(spec)],
+    statesBlock(spec),
     spec.variants.length > 0 && [h("h4", null, "Variants"), h("div", { class: "relies" }, spec.variants.map((v) => h("code", null, v)))],
     spec.rules.length > 0 && [h("h4", null, "Rules"), h("ul", { class: "plain rules" }, spec.rules.map((r) => h("li", null, h("span", { class: "rule" }, r.id), h("span", null, inline(r.text, spec)))))],
     h("h4", null, "Relies on"),

@@ -986,7 +986,10 @@ const mapData = (specs) => {
         rules: rulesOf(spec).filter((r) => r.short).map((r) => ({ id: r.short, text: r.text.replace(/^[-*]\s+\**(?:[A-Za-z]\w*\.)?R\d+\**\s*:\s*/, "") })),
         copy: Object.fromEntries(tableRows(spec.sections.copy).map((r) => [r.cells[0].replace(/^`|`$/g, ""), r.cells[1] ?? ""])),
         layout: layoutOf(spec),
-        states: lines(spec.sections.states).map((l) => l.replace(/^\s*[-*]\s+/, "")),
+        // A States table gives { name, when, looks }; a list from before the table, or a flow's, gives { text }.
+        states: formatOf(spec, "states")?.current
+          ? tableRows(spec.sections.states).map(({ cells: [name, when, looks] }) => ({ name, when, looks }))
+          : lines(spec.sections.states).filter((l) => !isTableRow(l)).map((l) => ({ text: l.replace(/^\s*[-*]\s+/, "") })),
         steps: spec.kind === "flow" ? lines(spec.sections.steps) : [],
         variants: variantsOf(spec),
         amendments: amendmentsOf(spec),
