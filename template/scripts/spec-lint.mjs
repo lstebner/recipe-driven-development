@@ -376,14 +376,13 @@ const usersOfAll = (live, byName) => {
 // in turn. They aren't part of its fingerprint: most component changes (a new variant) don't touch most of the
 // specs that use it, and sending every one back to be re-verified would teach people to wave it through. Instead
 // its report records each one's fingerprint, and lint asks for an audit when one has changed since (see checkReport).
+// It follows the same links as --refs (see linksOf), keeping only those to components.
 const componentsOf = (spec, byName) => {
   const found = new Map()
   const walk = (from) => {
-    const shared = refsOf(from).filter((r) => !r.local).map((r) => r.name)
-    for (const name of from.fm.uses === undefined ? shared : asList(from.fm.uses)) {
-      const target = byName.get(name)
-      if (target?.kind !== "component" || target === spec || found.has(name)) continue
-      found.set(name, target)
+    for (const { target } of linksOf(from, byName)) {
+      if (target.kind !== "component" || target === spec || found.has(target.name)) continue
+      found.set(target.name, target)
       walk(target)
     }
   }
@@ -742,10 +741,15 @@ const reliedOnBy = (target, specs, member) => {
 }
 
 // "AlbumDetail (verified), Shelf (implemented, through Card)": for a hook prompt, so the user sees what a change reaches.
+// For a component, it also marks the verified specs built from it whose reports record it: the change will flag
+// those for an audit (see componentsOf). A report from before components were recorded isn't audited, so isn't marked.
 const reachNote = (target, specs, limit = 8) => {
   const { found } = reliedOnBy(target, specs)
   if (!found.length) return ""
-  const names = found.map(({ spec, parent }) => `${spec.name} (${statusOf(spec)}${parent ? `, through ${parent.name}` : ""})`)
+  const byName = byNameOf(specs.all)
+  const audited = (spec) =>
+    target.kind === "component" && statusOf(spec) === "verified" && componentsOf(spec, byName).includes(target) && !checkReport(spec, byName).unstamped.includes(target.name)
+  const names = found.map(({ spec, parent }) => `${spec.name} (${statusOf(spec)}${parent ? `, through ${parent.name}` : ""}${audited(spec) ? ", will need an audit" : ""})`)
   const shown = names.length > limit ? [...names.slice(0, limit), `and ${names.length - limit} more`] : names
   return ` Relied on by ${shown.join(", ")}; see node scripts/spec-lint.mjs --refs ${target.name}.`
 }
@@ -1156,7 +1160,8 @@ const auditNote = (component, specs, byName) => {
   const built = specs.live.filter((s) => BUILT.includes(statusOf(s)) && componentsOf(s, byName).includes(component))
   return built.length
     ? ` It's part of ${built.map((s) => `${s.name} (${statusOf(s)})`).join(", ")}: offer to audit each for whether the change affects it.` +
-        `${built.some((s) => statusOf(s) === "verified") ? " Lint warns about the verified ones until they're re-verified." : ""}`
+        `${built.some((s) => statusOf(s) === "verified") ? " Lint warns about the verified ones until they're re-verified." : ""}` +
+        ` node scripts/spec-lint.mjs --refs ${component.name} shows everything else that relies on it.`
     : ""
 }
 const contentNote = (name, status) =>

@@ -505,7 +505,10 @@ cp "$button" "$button.bak"
 printf '\n## Decisions\n- 2026-10-26: Kept it to one size.\n' >> "$button"
 out="$(lint)"; [[ $? -eq 0 && "$out" != *"verified against an older"* ]] && pass "a component's Decisions don't call for an audit" || fail "audit: decisions" "$out"
 json="$(edit_json "$button" "- compact: small" $'- compact: small\n- destructive: for deleting things')"
-hook pre "$json" >/dev/null; sed -i 's/^- compact: small$/- compact: small\n- destructive: for deleting things/' "$button"
+out="$(hook pre "$json")"
+[[ "$out" == *'"ask"'* && "$out" == *"AlbumDetail (verified, will need an audit)"* ]] \
+  && pass "pre: a component change marks the verified specs it will flag for an audit" || fail "pre: audit mark" "$out"
+sed -i 's/^- compact: small$/- compact: small\n- destructive: for deleting things/' "$button"
 out="$(hook post "$json")"; code=$?
 [[ $code -eq 0 && "$out" == *"Your change to PrimaryButton reaches AlbumDetail, verified against the old version"* ]] \
   && pass "post: Claude's change to a component names the verified specs to audit" || fail "post: audit note" "$out"
@@ -515,6 +518,8 @@ comps="$(lint --components AlbumDetail)"; write_report "$hash" "| AlbumDetail.R1
 out="$(lint)"; [[ $? -eq 0 && "$out" != *"verified against an older"* ]] && pass "  ...until the report records it again" || fail "audit: cleared" "$out"
 comps=""; write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
 out="$(lint)"; [[ $? -eq 0 && "$out" != *"verified against an older"* ]] && pass "a report from before components were recorded isn't audited" || fail "audit: old report" "$out"
+out="$(hook pre "$(edit_json "$button" "- compact: small" "- compact: tiny")")"
+[[ "$out" == *"AlbumDetail (verified)"* && "$out" != *"will need an audit"* ]] && pass "  ...or marked for one in the prompt" || fail "pre: old report audit mark" "$out"
 mv "$button.bak" "$button"; comps="$good"; write_report "$hash" "| AlbumDetail.R1 | ✅ | test |" "| AlbumDetail.R2 | ✅ | test |"
 printf -- '---\ncomponent: Card\nstatus: draft\nuses: [PrimaryButton]\n---\n## Purpose\nA card.\n\n## Layout\n- [[PrimaryButton]]\n' > "$repo/specs/components/Card.md"
 printf -- '---\nscreen: Shelf\nstatus: draft\nuses: [Card]\n---\n## Goal\nA shelf.\n\n## Layout\n- [[Card]]\n\n## Rules\n- R1: Shows cards.\n' > "$repo/specs/screens/Shelf.md"
@@ -742,7 +747,7 @@ out="$(seen SessionStart)"
 mv "$screen.bak" "$screen"; seen >/dev/null
 cp "$button" "$button.bak"; sed -i 's/^- compact: small$/- compact: small\n- destructive: for deleting things/' "$button"
 out="$(seen)"
-[[ "$out" == *"PrimaryButton changed since you last read it"*"It's part of AlbumDetail (verified): offer to audit each for whether the change affects it. Lint warns about the verified ones"* ]] \
+[[ "$out" == *"PrimaryButton changed since you last read it"*"It's part of AlbumDetail (verified): offer to audit each for whether the change affects it. Lint warns about the verified ones"*"--refs PrimaryButton shows everything else that relies on it."* ]] \
   && pass "seen: a hand edit to a component names the built specs to audit" || fail "seen: component" "$out"
 mv "$button.bak" "$button"; seen >/dev/null
 own_edit() { # own_edit <file> <sed expr> [id]: what Claude's Edit does, hooks and all

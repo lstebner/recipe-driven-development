@@ -197,7 +197,8 @@ component, a rule that turned out wrong), change the recipe first, then the dish
 2. **Change the spec.** Any of these works:
    - **Ask Claude** ("add a destructive variant to PrimaryButton"). The spec is protected, so
      Claude writes it up as an [amendment](#amendments) and applies it, and you accept it at the
-     prompt. Its Affects line lists the specs the change reaches.
+     prompt. Its Affects line lists the specs the change reaches, from
+     `node scripts/spec-lint.mjs --refs <Name>`, and the prompt lists them too.
    - **Edit it yourself.** Claude is told about it on your next message ([above](#noticing-your-changes)).
    - **Set it back to `draft`** for a bigger rework, edit freely (`/spec-review` helps), and
      approve it again.
@@ -215,6 +216,8 @@ those specs. So they aren't sent back to be re-verified; they're flagged for an 
   `Components:` line). Lint **warns** on a verified spec when one of those components has
   changed since: "verified against an older PrimaryButton than there is now". A component's
   Used by, Open amendments and Decisions aren't part of its fingerprint, so they don't count.
+- Before a change, `--refs <Name>` and the prompt for it mark the verified specs that will need an
+  audit: "AlbumDetail (verified, will need an audit)".
 - When the change is yours, the hook tells Claude which built specs use the component. When it's
   Claude's, it's told which verified specs it has left behind. Either way, Claude tells you and
   offers to audit each one.
