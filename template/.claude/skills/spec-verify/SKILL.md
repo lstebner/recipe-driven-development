@@ -100,4 +100,6 @@ Use one row per rule, with the rule ID alone in the first column, plus rows for 
 that apply (Layout, Copy, Shared components, Schema, Contract, Errors, Paths). The hook reads this
 table: every rule needs a ✅ or 👤 row, and any ❌ or ⚠️ row blocks `verified`. It also reads the
 `Components:` line, exactly as `--components` prints it (`none` if the spec uses no components),
-and refuses `verified` if it's missing or out of date.
+and refuses `verified` if the line leaves out a component the spec uses or records an older one.
+For a spec with no components the line is just a record: if it starts using one later, its own
+fingerprint changes and the report goes stale anyway.

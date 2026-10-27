@@ -381,7 +381,7 @@ const componentsOf = (spec, byName) => {
   const found = new Map()
   const walk = (from) => {
     for (const { target } of linksOf(from, byName)) {
-      if (target.kind !== "component" || target === spec || found.has(target.name)) continue
+      if (target.kind !== "component" || target.name === spec.name || found.has(target.name)) continue
       found.set(target.name, target)
       walk(target)
     }
@@ -389,6 +389,16 @@ const componentsOf = (spec, byName) => {
   walk(spec)
   return [...found.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
+// Whether changing `component` will flag `spec` for an audit: it's verified, built from the component, and its report
+// records the component's fingerprint. A report from before components were recorded, or no report, isn't audited.
+const flagsForAudit = (spec, component, byName) => {
+  if (statusOf(spec) !== "verified" || !componentsOf(spec, byName).includes(component)) return false
+  const { hasStamps, unstamped } = checkReport(spec, byName)
+  return hasStamps && !unstamped.includes(component.name)
+}
+// The verified specs whose reports recorded an older `component` than there is now: the ones lint asks to audit.
+const behindOn = (component, specs, byName) =>
+  specs.live.filter((s) => statusOf(s) === "verified" && checkReport(s, byName).audit.includes(component.name)).map((s) => s.name)
 // The report's "Components:" line: "ArtistBadge 1a2b3c4d5e6f, PrimaryButton 9f8e7d6c5b4a", or "none".
 const componentStamps = (spec, byName) => componentsOf(spec, byName).map((c) => `${c.name} ${hashOf(c, byName)}`).join(", ") || "none"
 
@@ -399,7 +409,7 @@ const componentStamps = (spec, byName) => componentsOf(spec, byName).map((c) => 
 // a spec is marked verified. A report from before components were recorded has no line, so it's never audited.
 const checkReport = (spec, byName) => {
   const file = path.join(specsDir, "_reports", `${spec.name}.md`)
-  if (!existsSync(file)) return { file, problems: [`there's no report at ${rel(file)}; run /spec-verify ${spec.name}`], passed: 0, total: 0, taste: [], audit: [], unstamped: [] }
+  if (!existsSync(file)) return { file, problems: [`there's no report at ${rel(file)}; run /spec-verify ${spec.name}`], passed: 0, total: 0, taste: [], audit: [], unstamped: [], hasStamps: false }
   const lines = normalize(readFileSync(file, "utf8")).split("\n")
   const problems = []
   const hash = hashOf(spec, byName)
@@ -747,8 +757,7 @@ const reachNote = (target, specs, limit = 8) => {
   const { found } = reliedOnBy(target, specs)
   if (!found.length) return ""
   const byName = byNameOf(specs.all)
-  const audited = (spec) =>
-    target.kind === "component" && statusOf(spec) === "verified" && componentsOf(spec, byName).includes(target) && !checkReport(spec, byName).unstamped.includes(target.name)
+  const audited = (spec) => target.kind === "component" && flagsForAudit(spec, target, byName)
   const names = found.map(({ spec, parent }) => `${spec.name} (${statusOf(spec)}${parent ? `, through ${parent.name}` : ""}${audited(spec) ? ", will need an audit" : ""})`)
   const shown = names.length > limit ? [...names.slice(0, limit), `and ${names.length - limit} more`] : names
   return ` Relied on by ${shown.join(", ")}; see node scripts/spec-lint.mjs --refs ${target.name}.`
@@ -773,11 +782,17 @@ const refsReport = (query, specs) => {
     const width = Math.max(...found.map((r) => 2 * depth.get(r.spec) + r.spec.name.length))
     const kindWidth = Math.max(...found.map((r) => r.spec.kind.length))
     const statusWidth = Math.max(...found.map((r) => statusOf(r.spec).length))
+    // For a component, the verified specs a change to it will flag for an audit (see flagsForAudit).
+    const byName = byNameOf(specs.all)
+    const audited = (spec) => target.kind === "component" && flagsForAudit(spec, target, byName)
     // Print as a tree: each spec under the one it relies on through.
     const print = (parent) => {
       for (const row of found.filter((r) => (r.parent ?? target) === parent)) {
         const indent = "  ".repeat(depth.get(row.spec))
-        out.push(`${(indent + row.spec.name).padEnd(width)}  ${row.spec.kind.padEnd(kindWidth)}  ${statusOf(row.spec).padEnd(statusWidth)}  ${row.where.join(", ")}`)
+        out.push(
+          `${(indent + row.spec.name).padEnd(width)}  ${row.spec.kind.padEnd(kindWidth)}  ${statusOf(row.spec).padEnd(statusWidth)}  ` +
+            `${row.where.join(", ")}${audited(row.spec) ? "  (will need an audit)" : ""}`,
+        )
         print(row.spec)
       }
     }
@@ -1182,10 +1197,17 @@ const changeNotes = (seen, now, specs) => {
       if (status !== "draft") notes.push(`${spec.name} (${spec.kind}) is new, and already ${status}: read it before working on anything it covers.`)
       continue
     }
-    if (was.status !== status) notes.push(statusNote(spec, was.status, status, outlined))
-    if (was.hash !== hash && status !== "draft" && status !== "deprecated") {
-      notes.push(`${contentNote(spec.name, status)}${spec.kind === "component" ? auditNote(spec, specs, byName) : ""}`)
+    const changed = was.hash !== hash && status !== "draft" && status !== "deprecated"
+    // Edits to a draft aren't news, so a component reworked as a draft shows no content change when it's approved
+    // again. Its verified specs' reports say whether it changed, so name the ones it has left behind.
+    const behind = spec.kind === "component" && !changed && was.status === "draft" && !["draft", "deprecated"].includes(status) ? behindOn(spec, specs, byName) : []
+    if (was.status !== status) {
+      notes.push(
+        `${statusNote(spec, was.status, status, outlined)}` +
+          `${behind.length ? ` It changed while it was a draft, so ${behind.join(", ")} ${behind.length === 1 ? "was" : "were"} verified against an older version: offer to audit each for whether the change affects it.` : ""}`,
+      )
     }
+    if (changed) notes.push(`${contentNote(spec.name, status)}${spec.kind === "component" ? auditNote(spec, specs, byName) : ""}`)
   }
   for (const key of Object.keys(seen)) if (!now[key]) notes.push(`${key.split("/")[1]} was deleted.`)
   return notes
@@ -1262,6 +1284,8 @@ const hookPost = () => {
   const file = input.file_path && path.resolve(input.file_path)
   if (!file || !existsSync(specsDir)) return
   const specs = loadAll()
+  // How the specs this edit could touch looked before it (see beginOwnChange), read before endOwnChange clears it.
+  const before = readSeen().record?.pending[id ?? `file:${file}`]?.specs
   if (specKind(file) && specKind(file) !== "tokens") endOwnChange(id ?? `file:${file}`, () => specs)
   const sourcesOf = (spec) => asList(spec.fm.source).map((src) => path.join(root, src))
   const sources = new Set(specs.all.flatMap(sourcesOf))
@@ -1271,14 +1295,18 @@ const hookPost = () => {
   const byName = byNameOf(specs.all)
   const frozenNotes = frozen.map((s) => `${rel(file)} is a source of ${s.name}, which is ${deprecationNote(s, byName)}. Don't build on what ${s.name} describes.`)
   // An edit of Claude's to a component: name the verified specs whose reports it has left behind, so they get audited.
+  // Only when this edit changed the component's fingerprint: an edit to its Decisions, say, isn't to blame for drift
+  // from an earlier change. With no record of how it looked before, say what's behind without saying why.
   const edited = specs.live.find((s) => s.file === file && s.kind === "component")
-  const behind = edited ? specs.live.filter((s) => statusOf(s) === "verified" && checkReport(s, byName).audit.includes(edited.name)).map((s) => s.name) : []
-  const auditNotes = behind.length
-    ? [
-        `Your change to ${edited.name} reaches ${behind.join(", ")}, verified against the old version. Tell the user, and offer to audit each ` +
-          `for whether the change affects it; lint warns until each is re-verified with /spec-verify.`,
-      ]
-    : []
+  const was = edited && before ? before[keyOf(edited)] : undefined
+  const changedNow = edited && (!before || was?.hash !== hashOf(edited, byName))
+  const behind = changedNow ? behindOn(edited, specs, byName) : []
+  const audit = `Tell the user, and offer to audit each for whether the change affects it; lint warns until each is re-verified with /spec-verify.`
+  const auditNotes = !behind.length
+    ? []
+    : before
+      ? [`Your change to ${edited.name} reaches ${behind.join(", ")}, verified against the old version. ${audit}`]
+      : [`${behind.join(", ")} ${behind.length === 1 ? "was" : "were"} verified against an older ${edited.name} than there is now. ${audit}`]
   const note = [...frozenNotes, ...auditNotes].join("\n")
   const errors = lint(specs).problems.filter((p) => p.level === "error")
   if (errors.length === 0) {

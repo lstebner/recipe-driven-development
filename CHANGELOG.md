@@ -38,9 +38,10 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   records the fingerprint of each component a spec uses on a new `Components:` line in its report
   (`node scripts/spec-lint.mjs --components <Name>`), and lint warns, without failing, when one
   has changed since. Claude names the specs to audit when it changes a component, and when the
-  change-tracking hook sees you change one. Before a change, the prompt for it marks the verified
-  specs it will flag ("AlbumDetail (verified, will need an audit)"). Marking a spec verified now
-  needs the line. Existing
+  change-tracking hook sees you change one, including when a component reworked as a draft is
+  approved again. Before a change, `--refs` and the prompt for it mark the verified specs it will
+  flag ("AlbumDetail (verified, will need an audit)"). Marking a spec verified now needs the line to
+  record every component the spec uses. Existing
   reports don't have it and aren't audited until they're re-verified. `specs/README.md` has a new
   section, "Changing a spec", on how to evolve something that's already approved or built.
   Run `install.sh --update` for the new skill and rules.
