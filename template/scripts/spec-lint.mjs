@@ -47,6 +47,12 @@ const KINDS = {
   api: { dir: "apis", required: ["Purpose", "Rules"], usedBy: true },
   policy: { dir: "policies", required: ["Purpose", "Rules"], usedBy: true, keyed: ["inputs"], fingerprinted: ["inputs", "output", "rules", "must not"] },
 }
+// The table a States section holds, column by column: one row per state, a plain lowercase name, what puts it there
+// and what it looks like, all in plain words. What must or must never happen is a rule, not a state. Specs give
+// direction, so a component's props, types and defaults are left to its code.
+const STATES_COLUMNS = ["state", "when", "looks like"]
+const TABLES = { component: { states: STATES_COLUMNS }, screen: { states: STATES_COLUMNS } }
+const RULE_WORDS = /\b(must|never|always|should|cannot|can't|won't)\b/i
 const STATUSES = ["draft", "approved", "implemented", "verified", "deprecated"]
 // A spec with no status is treated as a draft everywhere: the least that's been agreed.
 const statusOf = (spec) => spec.fm.status ?? "draft"
@@ -108,7 +114,14 @@ const parseSections = (text) => {
 const asList = (value) => (Array.isArray(value) ? value : value ? [value] : [])
 const isTableRow = (text) => /^\s*\|/.test(text ?? "")
 const isSeparator = (text) => /^\s*\|\s*:?-{2,}/.test(text ?? "")
-const cellsOf = (text) => text.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim())
+// A row's cells. "\|" is a pipe inside a cell, as GitHub renders it, so a union type can be written `"a" \| "b"`.
+const cellsOf = (text) =>
+  text
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/(?<!\\)\|$/, "")
+    .split(/(?<!\\)\|/)
+    .map((c) => c.trim().replace(/\\\|/g, "|"))
 // Body rows of every table in a section: skips each header row (the one right above a |---| line) and the separator.
 const tableRows = (section) => {
   const lines = section?.lines ?? []
@@ -120,6 +133,28 @@ const tableKeys = (section) =>
   tableRows(section)
     .map((row) => ({ n: row.n, key: row.cells[0].replace(/^`|`$/g, "").replace(/^\$/, "") }))
     .filter((row) => row.key)
+
+// Header row of each table in a section: the one right above a |---| line.
+const tableHeaders = (section) => {
+  const lines = section?.lines ?? []
+  return lines.filter((l, i) => isTableRow(l.text) && isSeparator(lines[i + 1]?.text)).map((l) => ({ n: l.n, cells: cellsOf(l.text).map((c) => c.toLowerCase()) }))
+}
+// A States section in the current format is a table whose header is exactly the kind's columns (see TABLES).
+// Anything else under that heading (a list, or a table from before the format with other columns) gets one warning
+// and isn't checked row by row, so a spec that linted clean before the table existed still does.
+// { section, columns, headers, current }, or null when the kind doesn't have the section or the spec leaves it out.
+const formats = new WeakMap()
+const formatOf = (spec, key) => {
+  if (!formats.has(spec)) formats.set(spec, {})
+  const cache = formats.get(spec)
+  if (!(key in cache)) {
+    const columns = TABLES[spec.kind]?.[key]
+    const section = spec.sections[key]
+    const headers = columns && section ? tableHeaders(section) : []
+    cache[key] = columns && section ? { section, columns, headers, current: headers.length > 0 && headers.every((h) => h.cells.join("|") === columns.join("|")) } : null
+  }
+  return cache[key]
+}
 
 const parseSpec = (raw, file, kind) => {
   const text = normalize(raw)
@@ -576,6 +611,47 @@ const lint = ({ all, live, tokens, outline }) => {
       for (const row of tableKeys(spec.sections[section])) {
         if (keys.has(row.key)) report("error", spec, row.n, `duplicate key "${row.key}" in ${spec.sections[section].name}`)
         keys.add(row.key)
+      }
+    }
+
+    // The States table (see TABLES).
+    const migrate = `/spec-migrate ${spec.name} converts it`
+    if (kind === "component" && spec.sections["props / states"]) {
+      report("warning", spec, spec.sections["props / states"].line, `"## Props / States" is the old format: put its states in a ## States table and its guidelines in ## Rules, and leave props to the code (${migrate})`)
+    }
+    for (const key of Object.keys(TABLES[kind] ?? {})) {
+      const format = formatOf(spec, key)
+      if (!format) continue
+      const { section, columns, headers, current } = format
+      const layout = `| ${columns.join(" | ")} |`
+      const loose = section.lines.filter((l) => l.text.trim() && !isTableRow(l.text))
+      if (!headers.length) {
+        if (loose.length) report("warning", spec, section.line, `${section.name} is a list: write it as a table, ${layout} (${migrate})`)
+        continue
+      }
+      if (!current) {
+        const got = headers.find((h) => h.cells.join("|") !== columns.join("|"))
+        report("warning", spec, got.n, `${section.name}'s table isn't in the current format, ${layout} (got | ${got.cells.join(" | ")} |), so its rows aren't checked (${migrate})`)
+        continue
+      }
+      for (const l of loose) report("warning", spec, l.n, `${section.name} has a line outside its table; if it's a guideline, make it a rule in ## Rules`)
+      const names = new Set()
+      for (const row of tableKeys(section)) {
+        if (names.has(row.key)) report("error", spec, row.n, `duplicate key "${row.key}" in ${section.name}`)
+        names.add(row.key)
+      }
+    }
+    if (formatOf(spec, "states")?.current) {
+      for (const { n, cells } of tableRows(spec.sections.states)) {
+        // More cells than columns almost always means a | in a cell; say so rather than read the row a column off.
+        if (cells.length > STATES_COLUMNS.length) {
+          report("error", spec, n, `state ${cells[0]} has ${cells.length} cells for ${STATES_COLUMNS.length} columns; write a | inside a cell as \\|`)
+          continue
+        }
+        const [name = "", when = "", looks = ""] = cells
+        if (!/^[a-z][a-z0-9-]*$/.test(name)) report("error", spec, n, `state "${name}" should be a plain lowercase name, like loading or not-found`)
+        if (/`/.test(when)) report("warning", spec, n, `state ${name}'s "when" is written as code; say what's happening in plain words, like "while a purchase is in flight"`)
+        if (RULE_WORDS.test(looks)) report("warning", spec, n, `state ${name}'s "looks like" reads like a rule; put it in ## Rules so it gets an ID and a test`)
       }
     }
 

@@ -65,6 +65,12 @@ and follows it; the user tastes the result before it's called done. The format i
   if so. Re-running `/spec-verify` on a spec records the components as they are now. A component
   amendment's Affects line comes from `--refs`, like any other; say which of those specs will need an
   audit.
+- **Plain words:** specs give direction, so write them in plain English: what something is for,
+  how it behaves and why. Leave code-level detail (props, types, defaults, expressions) to the
+  code, unless plain words would be ambiguous in a way that matters. States go in a States table,
+  in plain words, and behaviour goes in Rules. A spec still in the old `## Props / States` format
+  can be converted with `/spec-migrate`. Mention it when you're working on one, but don't convert
+  it unasked.
 - **Tests** that check a rule include its full ID in brackets: `it("[AlbumDetail.R1] ...")`.
 - **Verification** checks the spec as written. Never weaken a test or reinterpret a rule to make
   it pass; a mismatch is either a bug or an amendment. Mark a rule 👤 only when a person genuinely

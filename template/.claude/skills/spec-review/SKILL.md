@@ -29,6 +29,13 @@ specific changes (and for a non-draft spec, those changes go in as amendments; s
 - Every `?condition` in Layout is explained by a rule, and every rule shows up somewhere in Layout or States.
 - Look for rules that conflict with each other or with a component's `Must not`.
 
+**Plain words**
+- The spec says what and why, not how the code does it. Flag code that has crept in (prop
+  names, types, defaults, expressions like `items.length`) and propose the plain words for it,
+  unless the plain words would be ambiguous.
+- Each States row is a condition, said in plain words; anything it must or must never do is a
+  Rule. An old-format `## Props / States` list: suggest `/spec-migrate <Name>`.
+
 **States**: which are missing? Check: loading, empty, error, offline, permission or auth,
 partial data, very long text or names, zero / one / many items, first-time use.
 

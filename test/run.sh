@@ -14,6 +14,7 @@ expect_err() { # expect_err <name> <substring>
   [[ $? -ne 0 && "$out" == *"$2"* ]] && pass "$1" || fail "$1" "$out"
 }
 expect_warn() { local out; out="$(lint)"; [[ "$out" == *"$2"* ]] && pass "$1" || fail "$1" "$out"; }
+expect_ok_warn() { local out; out="$(lint)"; [[ $? -eq 0 && "$out" == *"$2"* ]] && pass "$1" || fail "$1" "$out"; }  # warns, but doesn't fail
 hook() { # hook <pre|bash|post> <json>
   echo "$2" | CLAUDE_PROJECT_DIR="$repo" node "$repo/scripts/spec-lint.mjs" "--hook-$1" 2>&1
 }
@@ -63,8 +64,8 @@ rm "$older/specs/README.md.old"; "$kit/install.sh" "$older" --update >/dev/null 
 rm -rf "$older"
 [[ "$(grep -c spec-lint.mjs "$repo/.claude/settings.json")" == 6 && "$(grep -c rdd:start "$repo/CLAUDE.md")" == 1 && "$(grep -cxF specs/.last-seen.json "$repo/.gitignore")" == 1 ]] \
   && pass "install is idempotent" || fail "install is idempotent" "$out2"
-[[ -f "$repo/.claude/skills/spec-new/SKILL.md" && -f "$repo/.claude/skills/spec-review/SKILL.md" && -f "$repo/.claude/skills/spec-verify/SKILL.md" ]] \
-  && pass "install adds the three skills" || fail "skills installed" "$(ls "$repo/.claude/skills")"
+[[ -f "$repo/.claude/skills/spec-new/SKILL.md" && -f "$repo/.claude/skills/spec-review/SKILL.md" && -f "$repo/.claude/skills/spec-verify/SKILL.md" && -f "$repo/.claude/skills/spec-migrate/SKILL.md" ]] \
+  && pass "install adds the four skills" || fail "skills installed" "$(ls "$repo/.claude/skills")"
 old="$(mktemp -d)"
 printf '# Mine\n\n<!-- spec-kit:start -->\nold rules\n<!-- spec-kit:end -->\n\nafter\n' > "$old/CLAUDE.md"
 mkdir -p "$old/.claude"
@@ -171,6 +172,9 @@ screen="$repo/specs/screens/AlbumDetail.md"
 mutate() { # mutate <name> <expect_err|expect_warn> <substring> <sed expr>
   cp "$screen" "$screen.bak"; sed -i "$4" "$screen"; "$2" "$1" "$3"; mv "$screen.bak" "$screen"
 }
+mutate_in() { # mutate_in <file> <name> <expect_err|expect_warn> <substring> <sed expr>
+  cp "$1" "$1.bak"; sed -i "$5" "$1"; "$3" "$2" "$4"; mv "$1.bak" "$1"
+}
 mutate "unknown component ref"   expect_err  "[[Ghost]] has no spec"               's/\[\[PrimaryButton\]\]/[[Ghost]]/'
 mutate "bad copy key"            expect_err  "{copy.buyy} isn't in the Copy table" 's/{copy.buy}/{copy.buyy}/'
 mutate "ref missing from uses"   expect_err  "not in \"uses\""                     's/^uses: .*/uses: [ArtistBadge]/'
@@ -197,6 +201,49 @@ sed -i 's/^screen: AlbumDetail/screen: Second/; s/AlbumDetail\.R/Second.R/g; /^s
 lint --fix >/dev/null
 expect_warn "same one-off in two specs warns" "also appears in Second — should it be shared?"
 rm "$repo/specs/screens/Second.md" "$repo/specs/components/Other.md"; lint --fix >/dev/null
+
+echo "states and rules"
+toggle="$repo/specs/components/Toggle.md"
+cat > "$toggle" <<'EOF'
+---
+component: Toggle
+status: approved
+---
+## Purpose
+An on/off switch.
+
+## States
+| state | when | looks like |
+|---|---|---|
+| on | while it's switched on | knob to the right, $color.accent track |
+| disabled | while the screen says it can't be changed | 50% opacity |
+| pressed | while held | knob grows slightly |
+
+## Rules
+- R1: Doesn't change while disabled.
+EOF
+lint --fix >/dev/null
+out="$(lint)"; [[ $? -eq 0 && "$out" != *Toggle.md*error* && "$out" != *"old format"* && "$out" != *"is a list"* && "$out" != *"written as code"* ]] \
+  && pass "a States table in plain words lints clean" || fail "states clean" "$out"
+mutate_in "$toggle" "a state named like code"             expect_err 'state "Pressed" should be a plain lowercase name' 's/^| pressed |/| Pressed |/'
+mutate_in "$toggle" "a duplicate state"                   expect_err 'duplicate key "on" in States'           's/^| pressed |/| on |/'
+mutate_in "$toggle" "a \"when\" written as code warns"    expect_ok_warn "state on's \"when\" is written as code; say what's happening in plain words" 's/| while it'"'"'s switched on |/| `on` is true |/'
+mutate_in "$toggle" "a \"looks like\" that reads like a rule warns" expect_ok_warn "state disabled's \"looks like\" reads like a rule" 's/| 50% opacity |/| 50% opacity; must not respond |/'
+mutate_in "$toggle" "a table in another layout only warns" expect_ok_warn "States's table isn't in the current format, | state | when | looks like | (got | state | looks like |), so its rows aren't checked" 's/^| state | when | looks like |/| state | looks like |/'
+mutate_in "$toggle" "  ...and its rows aren't checked, even in the wrong order" expect_ok_warn "isn't in the current format" 's/^| state | when | looks like |/| when | state | looks like |/'
+mutate_in "$toggle" "a line outside the table only warns" expect_ok_warn "States has a line outside its table"   's/^|---|---|---|$/&\n- also: not pressable/'
+mutate_in "$toggle" "a | inside a cell can be written \\|" expect_ok ""                                       's/| knob grows slightly |/| knob grows \\| shrinks |/'
+mutate_in "$toggle" "  ...and an unescaped one says how"  expect_err 'state pressed has 4 cells for 3 columns; write a | inside a cell as \|' 's/| knob grows slightly |/| knob grows | shrinks |/'
+mutate_in "$toggle" "a States list warns, pointing at /spec-migrate" expect_ok_warn "States is a list: write it as a table, | state | when | looks like | (/spec-migrate Toggle converts it)" '/^| \|^|---/d; s/^## States$/## States\n- on: knob to the right/'
+mutate_in "$toggle" "the old Props / States section warns" expect_ok_warn '"## Props / States" is the old format: put its states in a ## States table and its guidelines in ## Rules, and leave props to the code (/spec-migrate Toggle converts it)' 's/^## Purpose$/## Props \/ States\n- on (required)\n\n## Purpose/'
+mutate_in "$toggle" "a component's own Props section isn't checked" expect_ok ""                              's/^## Rules$/## Props\n| prop | kind |\n|---|---|\n| `on` | boolean |\n| `on` | again |\n\n## Rules/'
+mutate_in "$toggle" "tokens in States are checked"        expect_err 'unknown token $color.nope'              's/\$color.accent track/$color.nope track/'
+rm "$toggle"; lint --fix >/dev/null
+mutate "a screen's States table lints clean"           expect_ok   ""                                         's/^## Rules$/## States\n| state | when | looks like |\n|---|---|---|\n| loading | while the album is fetched | skeleton; no [[PrimaryButton]] |\n\n## Rules/'
+mutate "  ...and its refs are still checked"           expect_err  "[[Ghost]] has no spec"                    's/^## Rules$/## States\n| state | when | looks like |\n|---|---|---|\n| loading | while the album is fetched | skeleton; no [[Ghost]] |\n\n## Rules/'
+mutate "a screen's States list warns"                  expect_warn "States is a list: write it as a table, | state | when | looks like | (/spec-migrate AlbumDetail converts it)" 's/^## Rules$/## States\n- loading: skeleton\n\n## Rules/'
+mutate "a States table from before the format lints clean, with a warning" expect_ok_warn "isn't in the current format" 's/^## Rules$/## States\nEach state replaces the body.\n\n| state | shows |\n|---|---|\n| loading | a skeleton |\n| loading | twice, by mistake |\n\n## Rules/'
+mutate "attributes on a component aren't checked as props" expect_ok ""                                       's|\[\[PrimaryButton\]\]|[[PrimaryButton loading=true href=/search?q=jazz]]|'
 
 echo "flows, models, apis"
 cat > "$repo/specs/models/Album.md" <<'EOF'
@@ -280,9 +327,6 @@ out="$(hook pre "$(edit_json "$repo/specs/components/PrimaryButton.md" "The Prim
 [[ "$out" == *'"ask"'* && "$out" == *"Relied on by AlbumDetail (approved), Checkout (approved, through AlbumDetail); see node scripts/spec-lint.mjs --refs PrimaryButton."* ]] \
   && pass "pre: a protected change names who relies on the spec" || fail "pre: relied on by" "$out"
 flow="$repo/specs/flows/Checkout.md"
-mutate_in() { # mutate_in <file> <name> <expect_err|expect_warn> <substring> <sed expr>
-  cp "$1" "$1.bak"; sed -i "$5" "$1"; "$3" "$2" "$4"; mv "$1.bak" "$1"
-}
 mutate_in "$flow" "flow: unknown screen"     expect_err "[[screen:Nope]] has no spec"        's/screen:AlbumDetail/screen:Nope/'
 mutate_in "$flow" "flow: wrong kind of ref"  expect_err "[[model:GetAlbum]] has no spec"      's/\[\[api:GetAlbum\]\]/[[model:GetAlbum]]/'
 mutate_in "$flow" "flow: step that doesn't exist" expect_err "goes to step 7"              's/→ step 2/→ step 7/'

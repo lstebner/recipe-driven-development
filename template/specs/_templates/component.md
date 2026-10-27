@@ -9,8 +9,13 @@ status: draft
 ## Variants
 <!-- - default: ... -->
 
-## Props / States
-<!-- Props, plus states like hover / disabled / loading / error. -->
+## States
+<!-- One row per state (hover / pressed / disabled / loading / error…), named in plain lowercase. Say in plain words what puts it there and what it looks like. -->
+| state | when | looks like |
+|---|---|---|
+
+## Rules
+<!-- Optional. - R1: one checkable statement per bullet, for behaviour ("not pressable while loading"). -->
 
 ## Style
 <!-- Use $tokens, not raw values. -->

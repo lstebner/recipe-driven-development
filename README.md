@@ -76,7 +76,7 @@ deprecated.
 ## Installing
 
 ```
-./install.sh <repo>            # adds specs/, scripts/spec-lint.mjs, three skills, hooks, CLAUDE.md rules
+./install.sh <repo>            # adds specs/, scripts/spec-lint.mjs, four skills, hooks, CLAUDE.md rules
 ./install.sh <repo> --update   # also refreshes spec-lint.mjs, specs/README.md, the skills and the CLAUDE.md rules
 ./test/run.sh                  # end-to-end check in a throwaway repo
 ```
@@ -103,7 +103,7 @@ What gets installed into the repo:
 | `specs/tokens.md` | design tokens, referenced as `$name` |
 | `scripts/spec-lint.mjs` | lint (`--fix` regenerates Used by, `--summary` prints a dashboard, `--hash` fingerprints a spec, `--refs` lists every spec that relies on one), scaffolding (`--new <kind> <Name>`, `--scaffold` from the outline); also the hook entry point. Node ≥ 18, no dependencies |
 | `.claude/settings.json` | **PreToolUse** hooks ask you before protected content in a non-draft spec changes (naming the amendment when Claude applies one), before a shell command that looks like it writes to `specs/`, before anything is marked `verified` (which is refused outright without a passing report), and before a spec is deprecated (any later edit to a deprecated spec is refused). **PostToolUse** hooks send lint errors back to Claude, remind it when it edits the source of a deprecated spec, and record its own changes to specs. **SessionStart** and **UserPromptSubmit** hooks tell Claude which specs changed outside its own edits (your approvals and edits, or a teammate's after a pull), using `specs/.last-seen.json`, which install adds to `.gitignore`. Also kitchen-themed `spinnerVerbs` ("Checking the pantry", "Mincing", "Deglazing"…), unless the repo already sets its own |
-| `.claude/skills/spec-new`, `spec-review`, `spec-verify` | `/spec-new [kind] <Name>[: what it's for]`, `/spec-review <Name>`, `/spec-verify <Name>` |
+| `.claude/skills/spec-new`, `spec-review`, `spec-verify`, `spec-migrate` | `/spec-new [kind] <Name>[: what it's for]`, `/spec-review <Name>`, `/spec-verify <Name>`, `/spec-migrate [Name]` |
 | `CLAUDE.md` | rules block between `rdd:start` and `rdd:end` markers |
 
 Limits: the shell-command hook is a heuristic. It catches the usual ways of writing files
