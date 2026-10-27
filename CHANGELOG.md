@@ -46,17 +46,16 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   section, "Changing a spec", on how to evolve something that's already approved or built.
   Run `install.sh --update` for the new skill and rules.
 
-- Components keep **Props** and **States** as separate tables, and can have **Rules**: props are
-  named in backticks as in code, with a type, required and default; states are plain lowercase
-  names, with what puts the component in them and what it looks like; behaviour ("not pressable")
-  is a rule, with an ID and a test. A prop that drives a state says `→ state <name>`, and lint
-  checks both ends. It also checks that a screen's `[[Component prop=…]]` only sets props the
-  component has. A screen's States section is the same table. Write a `|` inside a cell as `\|`
-  (for a union type). Specs in the old format, or with a Props or States table in another layout,
-  still lint, with a warning, and the new `/spec-migrate` skill converts them. It converts verified
-  specs, and components with verified specs built from them, only if you say so, since converting
-  sends those back to be re-verified or flags them for an audit. Run `install.sh --update` for
-  the new templates, skill and rules.
+- Specs stay in plain English. A component's States go in a table (state, when, looks like),
+  each said in plain words, and its behaviour ("not pressable while loading") goes in **Rules**,
+  with an ID and a test. Its props, types and defaults are left to the code. A screen's States
+  section is the same table. Lint warns when a state's "when" is written as code, and when its
+  "looks like" reads like a rule. Specs in the old `## Props / States` format, or with a States
+  table in another layout, still lint, with a warning, and the new `/spec-migrate` skill converts
+  them. It converts verified specs, and components with verified specs built from them, only if
+  you say so, since converting sends those back to be re-verified or flags them for an audit. A
+  `|` inside any table cell can be written `\|`. Run `install.sh --update` for the new
+  templates, skill and rules.
 
 ## 0.2.0 (2026-10-26)
 

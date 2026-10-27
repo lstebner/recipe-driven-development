@@ -202,7 +202,7 @@ lint --fix >/dev/null
 expect_warn "same one-off in two specs warns" "also appears in Second — should it be shared?"
 rm "$repo/specs/screens/Second.md" "$repo/specs/components/Other.md"; lint --fix >/dev/null
 
-echo "props and states"
+echo "states and rules"
 toggle="$repo/specs/components/Toggle.md"
 cat > "$toggle" <<'EOF'
 ---
@@ -212,61 +212,38 @@ status: approved
 ## Purpose
 An on/off switch.
 
-## Props
-| prop | type | required | default | notes |
-|---|---|---|---|---|
-| `on` | boolean | yes | | → state on |
-| `onChange` | (on: boolean) => void | yes | | |
-| `disabled` | boolean | no | false | → state disabled |
-
 ## States
 | state | when | looks like |
 |---|---|---|
-| on | `on` is true | knob to the right, $color.accent track |
-| disabled | `disabled` is true | 50% opacity |
+| on | while it's switched on | knob to the right, $color.accent track |
+| disabled | while the screen says it can't be changed | 50% opacity |
 | pressed | while held | knob grows slightly |
 
 ## Rules
-- R1: Doesn't call `onChange` while disabled.
+- R1: Doesn't change while disabled.
 EOF
 lint --fix >/dev/null
-out="$(lint)"; [[ $? -eq 0 && "$out" != *Toggle.md*error* && "$out" != *"old format"* && "$out" != *"is a list"* ]] && pass "Props and States tables lint clean" || fail "tables clean" "$out"
-mutate_in "$toggle" "a prop not written as code"          expect_err 'prop "disabled" should be its name as written in code, in backticks' 's/^| `disabled` |/| disabled |/'
-mutate_in "$toggle" "required must be yes or no"          expect_err "prop \`on\`'s \"required\" should be yes or no (got \"maybe\")" 's/^| `on` | boolean | yes |/| `on` | boolean | maybe |/'
-mutate_in "$toggle" "a prop with no type"                 expect_err 'prop `onChange` has no type'           's/^| `onChange` | (on: boolean) => void |/| `onChange` | |/'
-mutate_in "$toggle" "  ...is only a warning in a draft"   expect_warn 'prop `onChange` has no type'          's/^status: approved/status: draft/; s/^| `onChange` | (on: boolean) => void |/| `onChange` | |/'
-mutate_in "$toggle" "a prop driving a state that isn't there" expect_err "drives state \"off\", which isn't in States" 's/| → state on |/| → state off |/'
+out="$(lint)"; [[ $? -eq 0 && "$out" != *Toggle.md*error* && "$out" != *"old format"* && "$out" != *"is a list"* && "$out" != *"written as code"* ]] \
+  && pass "a States table in plain words lints clean" || fail "states clean" "$out"
 mutate_in "$toggle" "a state named like code"             expect_err 'state "Pressed" should be a plain lowercase name' 's/^| pressed |/| Pressed |/'
-mutate_in "$toggle" "a state that depends on a missing prop" expect_err 'state on depends on `checked`, which isn'"'"'t in Props' 's/| `on` is true |/| `checked` is true |/'
-mutate_in "$toggle" "a duplicate prop"                    expect_err 'duplicate key "on" in Props'           's/^| `disabled` | boolean | no | false | → state disabled |/| `on` | boolean | no | false | |/'
+mutate_in "$toggle" "a duplicate state"                   expect_err 'duplicate key "on" in States'           's/^| pressed |/| on |/'
+mutate_in "$toggle" "a \"when\" written as code warns"    expect_ok_warn "state on's \"when\" is written as code; say what's happening in plain words" 's/| while it'"'"'s switched on |/| `on` is true |/'
+mutate_in "$toggle" "a \"looks like\" that reads like a rule warns" expect_ok_warn "state disabled's \"looks like\" reads like a rule" 's/| 50% opacity |/| 50% opacity; must not respond |/'
 mutate_in "$toggle" "a table in another layout only warns" expect_ok_warn "States's table isn't in the current format, | state | when | looks like | (got | state | looks like |), so its rows aren't checked" 's/^| state | when | looks like |/| state | looks like |/'
 mutate_in "$toggle" "  ...and its rows aren't checked, even in the wrong order" expect_ok_warn "isn't in the current format" 's/^| state | when | looks like |/| when | state | looks like |/'
-mutate_in "$toggle" "a line outside the table only warns" expect_ok_warn "Props has a line outside its table"    's/^|---|---|---|---|---|$/&\n- also: not pressable/'
-mutate_in "$toggle" "a union type can be written with \\|" expect_ok ""                                        's/^| `onChange` | (on: boolean) => void |/| `onChange` | (on: boolean) => void \\| null |/'
-mutate_in "$toggle" "  ...and an unescaped | says how"    expect_err 'prop `onChange` has 6 cells for 5 columns; write a | inside a cell as \|' 's/^| `onChange` | (on: boolean) => void |/| `onChange` | (on: boolean) => void | null |/'
-mutate_in "$toggle" "a hyphenated prop name"              expect_ok ""                                        's/^| `disabled` |/| `aria-label` | string | no | | |\n| `disabled` |/'
-mutate_in "$toggle" "\"when\" can be an expression, starting with the prop" expect_ok ""                        's/| `on` is true |/| `on === true` |/; s/| `disabled` is true |/| `disabled.valueOf()` |/'
-mutate_in "$toggle" "  ...but the prop it starts with is still checked" expect_err 'state on depends on `checked`' 's/| `on` is true |/| `checked === true` |/'
-mutate_in "$toggle" "a Props list's tokens aren't checked, as before the tables" expect_ok_warn "Props is a list" '/^| `\|^| prop\|^|---|---|---|---|---|$/d; s/^## Props$/## Props\n- on (required), uses $color.nope/'
-mutate_in "$toggle" "notes that read like a rule warn"    expect_warn "prop \`on\`'s notes read like a rule"  's/| → state on |/| → state on; must be set |/'
-mutate_in "$toggle" "a list in Props warns, pointing at /spec-migrate" expect_warn "Props is a list: write it as a table, | prop | type | required | default | notes | (/spec-migrate Toggle converts it)" '/^| `\|^| prop\|^|---|---|---|---|---|$/d; s/^## Props$/## Props\n- on (required), onChange, disabled/'
-mutate_in "$toggle" "the old Props / States section warns" expect_warn '"## Props / States" is the old format: split it into a ## Props table and a ## States table, and move guidelines into ## Rules (/spec-migrate Toggle converts it)' 's/^## Purpose$/## Props \/ States\n- on (required)\n\n## Purpose/'
-mutate_in "$toggle" "tokens in Props are checked"         expect_err 'unknown token $color.nope'             's/| → state disabled |/| → state disabled, $color.nope |/'
+mutate_in "$toggle" "a line outside the table only warns" expect_ok_warn "States has a line outside its table"   's/^|---|---|---|$/&\n- also: not pressable/'
+mutate_in "$toggle" "a | inside a cell can be written \\|" expect_ok ""                                       's/| knob grows slightly |/| knob grows \\| shrinks |/'
+mutate_in "$toggle" "  ...and an unescaped one says how"  expect_err 'state pressed has 4 cells for 3 columns; write a | inside a cell as \|' 's/| knob grows slightly |/| knob grows | shrinks |/'
+mutate_in "$toggle" "a States list warns, pointing at /spec-migrate" expect_ok_warn "States is a list: write it as a table, | state | when | looks like | (/spec-migrate Toggle converts it)" '/^| \|^|---/d; s/^## States$/## States\n- on: knob to the right/'
+mutate_in "$toggle" "the old Props / States section warns" expect_ok_warn '"## Props / States" is the old format: put its states in a ## States table and its guidelines in ## Rules, and leave props to the code (/spec-migrate Toggle converts it)' 's/^## Purpose$/## Props \/ States\n- on (required)\n\n## Purpose/'
+mutate_in "$toggle" "a component's own Props section isn't checked" expect_ok ""                              's/^## Rules$/## Props\n| prop | kind |\n|---|---|\n| `on` | boolean |\n| `on` | again |\n\n## Rules/'
+mutate_in "$toggle" "tokens in States are checked"        expect_err 'unknown token $color.nope'              's/\$color.accent track/$color.nope track/'
 rm "$toggle"; lint --fix >/dev/null
-button="$repo/specs/components/PrimaryButton.md"
-cp "$button" "$button.orig"
-sed -i 's/^## Must not$/## Props\n| prop | type | required | default | notes |\n|---|---|---|---|---|\n| `label` | string | yes | | |\n| `loading` | boolean | no | false | |\n\n## Must not/' "$button"
-mutate "a screen can set a component's props"         expect_ok   ""                                         's/\[\[PrimaryButton\]\]/[[PrimaryButton loading=true]]/'
-mutate "  ...but only ones it has"                     expect_err  'PrimaryButton has no prop "busy" (known: label, loading)' 's/\[\[PrimaryButton\]\]/[[PrimaryButton busy=true]]/'
-mutate "  ...and a = inside a value isn't another prop" expect_ok   ""                                         's|\[\[PrimaryButton\]\]|[[PrimaryButton label=/search?q=jazz]]|'
-mv "$button.orig" "$button"; cp "$button" "$button.orig"
-sed -i 's/^## Must not$/## Props\n- label (required), loading\n\n## Must not/' "$button"
-mutate "a component whose Props is a list doesn't fail the props set on it" expect_ok ""                       's/\[\[PrimaryButton\]\]/[[PrimaryButton loading=true]]/'
-mv "$button.orig" "$button"
-mutate "a States table from before the format lints clean, with a warning" expect_ok_warn "isn't in the current format" 's/^## Rules$/## States\nEach state replaces the body.\n\n| state | shows |\n|---|---|\n| loading | a skeleton |\n| loading | twice, by mistake |\n\n## Rules/'
-mutate "a screen's States table lints clean"           expect_ok   ""                                         's/^## Rules$/## States\n| state | when | looks like |\n|---|---|---|\n| loading | fetching | skeleton; no [[PrimaryButton]] |\n\n## Rules/'
-mutate "  ...and its refs are still checked"           expect_err  "[[Ghost]] has no spec"                    's/^## Rules$/## States\n| state | when | looks like |\n|---|---|---|\n| loading | fetching | skeleton; no [[Ghost]] |\n\n## Rules/'
+mutate "a screen's States table lints clean"           expect_ok   ""                                         's/^## Rules$/## States\n| state | when | looks like |\n|---|---|---|\n| loading | while the album is fetched | skeleton; no [[PrimaryButton]] |\n\n## Rules/'
+mutate "  ...and its refs are still checked"           expect_err  "[[Ghost]] has no spec"                    's/^## Rules$/## States\n| state | when | looks like |\n|---|---|---|\n| loading | while the album is fetched | skeleton; no [[Ghost]] |\n\n## Rules/'
 mutate "a screen's States list warns"                  expect_warn "States is a list: write it as a table, | state | when | looks like | (/spec-migrate AlbumDetail converts it)" 's/^## Rules$/## States\n- loading: skeleton\n\n## Rules/'
+mutate "a States table from before the format lints clean, with a warning" expect_ok_warn "isn't in the current format" 's/^## Rules$/## States\nEach state replaces the body.\n\n| state | shows |\n|---|---|\n| loading | a skeleton |\n| loading | twice, by mistake |\n\n## Rules/'
+mutate "attributes on a component aren't checked as props" expect_ok ""                                       's|\[\[PrimaryButton\]\]|[[PrimaryButton loading=true href=/search?q=jazz]]|'
 
 echo "flows, models, apis"
 cat > "$repo/specs/models/Album.md" <<'EOF'

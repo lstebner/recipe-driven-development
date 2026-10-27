@@ -10,7 +10,7 @@ status: draft
 <!-- Indented tree. [[Shared]] · [[~OneOff]] · {copy.key} · $token · (>=md: row, <md: stack) · ?cond · -> R1 -->
 
 ## States
-<!-- loading / empty / error / offline / permission-denied: whichever apply, one row each, named in plain lowercase. -->
+<!-- loading / empty / error / offline / permission-denied: whichever apply, one row each, named in plain lowercase, said in plain words. -->
 | state | when | looks like |
 |---|---|---|
 

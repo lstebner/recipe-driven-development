@@ -9,13 +9,8 @@ status: draft
 ## Variants
 <!-- - default: ... -->
 
-## Props
-<!-- One row per prop, named in backticks as in code. A prop that drives a state says "→ state <name>" in notes. -->
-| prop | type | required | default | notes |
-|---|---|---|---|---|
-
 ## States
-<!-- One row per state (hover / pressed / disabled / loading / error…), named in plain lowercase. "when" names the prop or event behind it. -->
+<!-- One row per state (hover / pressed / disabled / loading / error…), named in plain lowercase. Say in plain words what puts it there and what it looks like. -->
 | state | when | looks like |
 |---|---|---|
 

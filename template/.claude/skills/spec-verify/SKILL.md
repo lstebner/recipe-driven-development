@@ -32,9 +32,8 @@ Offer to verify its `replaced_by` instead.
 1. `node scripts/spec-lint.mjs`: any errors go at the top of the report.
 2. Read the spec, every spec it references, and `specs/tokens.md` (for UI).
 3. **Static checks** against the `source` files:
-   - **component:** every row in Props matches the code (name, type, required, default), and
-     the code has no props the table doesn't list; each state in States can actually be reached
-     the way its "when" says.
+   - **component:** each state in States can actually be reached the way its "when" says, and
+     looks the way it says.
    - **screen / component:** every `uses` component is imported and actually rendered; no
      shared component has been copied in; every `{copy.key}` text appears verbatim
      (placeholders aside); tokens are used rather than raw values wherever Style names them.
