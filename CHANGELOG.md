@@ -16,6 +16,13 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
 
 ## Unreleased
 
+- Outline entries link to their specs, so `specs/outline.md` works as a table of contents in a
+  markdown editor: `- [AlbumDetail](screens/AlbumDetail.md): let a listener buy an album`.
+  `--scaffold` links each entry once its spec exists, and `--fix` links any that aren't yet and
+  corrects any that point at the wrong file. Lint warns about an entry with a spec but no link,
+  so after `--update`, run `node scripts/spec-lint.mjs --fix` once to link the existing ones.
+  Plain entries (`- Name: a line`) are still how you add something new.
+
 - A link can cite one rule of another spec: `[[model:Highlight#R7]]`. Lint checks the rule exists,
   and `--refs Highlight#R7` lists the specs that cite it, plus those that link to all of Highlight.
 
