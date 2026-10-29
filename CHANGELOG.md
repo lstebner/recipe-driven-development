@@ -31,7 +31,8 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   **Storage** section.
 
 - `--summary` counts tagged tests in Python's `test_*.py` and `*_test.py` files wherever they are,
-  and skips `.venv`, `venv`, `__pycache__`, `.tox` and Bazel's `bazel-*` output folders.
+  and skips `.venv`, `venv`, `__pycache__`, `.tox` and Bazel's `bazel-*` output folders. The
+  docs show tagging a Python test in its docstring, since its name can't hold the brackets.
 
 ## 0.3.0 (2026-10-27)
 

@@ -168,7 +168,7 @@ out="$(lint --fix)"; [[ "$out" != *updated* ]] && pass "--fix is idempotent" || 
 out="$(lint --summary)"
 [[ "$out" == *"1/2"* && "$out" == *"~ReleaseTimeline"* && "$out" == *"ArtistBadge"*"← AlbumDetail"* ]] && pass "summary shows coverage + shared/one-off" || fail "summary" "$out"
 for py in src/test_album_detail.py src/album_detail_test.py; do
-  echo 'def test_owned():  # [AlbumDetail.R2]' > "$repo/$py"
+  printf 'def test_owned():\n    """[AlbumDetail.R2] hides buy when owned"""\n' > "$repo/$py"
   out="$(lint --summary)"; [[ "$out" == *"2/2"* ]] && pass "summary counts tests tagged in $(basename "$py")" || fail "python test $py" "$out"
   rm "$repo/$py"
 done

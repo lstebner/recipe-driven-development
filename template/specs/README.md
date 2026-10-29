@@ -653,7 +653,8 @@ props. Lint warns about each, and they keep working. To convert them, run `/spec
 - Don't renumber IDs. If a rule is removed, its number retires.
 - Write rules so they can be checked as pass or fail. "Feels fast" can't be checked; "shows a skeleton within 100 ms" can.
 - Tag tests with the rule ID in brackets so verification can find them:
-  `it("[AlbumDetail.R1] hides buy when owned", ...)`.
+  `it("[AlbumDetail.R1] hides buy when owned", ...)`. Where a test's name can't hold brackets, as in
+  Python, put the tag in its docstring: `"""[GetAlbum.R1] an unlisted album is not found"""`.
 
 ## Amendments
 

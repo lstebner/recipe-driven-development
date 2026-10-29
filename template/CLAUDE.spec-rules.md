@@ -71,7 +71,8 @@ and follows it; the user tastes the result before it's called done. The format i
   in plain words, and behaviour goes in Rules. A spec still in the old `## Props / States` format
   can be converted with `/spec-migrate`. Mention it when you're working on one, but don't convert
   it unasked.
-- **Tests** that check a rule include its full ID in brackets: `it("[AlbumDetail.R1] ...")`.
+- **Tests** that check a rule include its full ID in brackets: `it("[AlbumDetail.R1] ...")`, or
+  in the docstring where the name can't hold it (Python).
 - **Verification** checks the spec as written. Never weaken a test or reinterpret a rule to make
   it pass; a mismatch is either a bug or an amendment. Mark a rule 👤 only when a person genuinely
   has to judge it, never to get past a check you could have run.
