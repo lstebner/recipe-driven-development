@@ -38,7 +38,8 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   following every link onward. Reach still passes through screens, components, flows and policies.
   The output names the models and APIs it stopped at, since a change reaches their users only if
   it changes their contract. Before, a policy a model mentioned "reached" every API that returned
-  anything holding that model.
+  anything holding that model. A change to a model still reaches on through every model or API
+  that holds all of it (in Fields, Request or Response), since those change shape with it.
 
 ## 0.3.0 (2026-10-27)
 

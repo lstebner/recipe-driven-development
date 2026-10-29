@@ -868,9 +868,14 @@ const linksOf = (spec, byName) => {
 // that returns [[model:Album]] returns its price too), but not links to its other members. Those whole-target
 // links are marked in `where`. Deprecated specs are frozen, so they're returned apart.
 // Reach stops at a model or API: it's a contract with its own users, and a change only reaches them if it changes
-// the contract, which is an amendment to that spec in turn. Those with users of their own come back as `stopped`.
-// Without the stop, a policy a model mentions would reach every API that returns anything holding that model.
+// the contract, which is an amendment to that spec in turn. Without the stop, a policy a model mentions would reach
+// every API that returns anything holding that model. The exception is a change to a model, which reaches on
+// through every model or API that holds all of it (a field typed [[model:Album]], a Response that is one): those
+// change shape with it, though their own text doesn't. Contracts it stops at that have users of their own come
+// back as `stopped`.
 const CONTRACTS = ["model", "api"]
+const HOLDS = ["fields", "request", "response"]
+const holdsAll = (l) => l.target.kind === "model" && l.member === undefined && HOLDS.includes(l.where)
 const reliedOnBy = (target, specs, member) => {
   const byName = byNameOf(specs.all)
   const links = specs.live.flatMap((s) => linksOf(s, byName))
@@ -878,6 +883,7 @@ const reliedOnBy = (target, specs, member) => {
   const whereOf = (l) => (member && l.target === target && l.member === undefined ? `${l.where} (all of ${target.name})` : l.where)
   const found = []
   const seen = new Set([target])
+  const stops = new Set()
   let frontier = [target]
   while (frontier.length) {
     const next = []
@@ -886,12 +892,14 @@ const reliedOnBy = (target, specs, member) => {
       for (const from of [...new Set(into.map((l) => l.from))].sort((a, b) => a.name.localeCompare(b.name))) {
         seen.add(from)
         found.push({ spec: from, parent: node === target ? null : node, where: [...new Set(into.filter((l) => l.from === from).map(whereOf))] })
-        if (!CONTRACTS.includes(from.kind)) next.push(from)
+        const passes = !CONTRACTS.includes(from.kind) || (target.kind === "model" && into.some((l) => l.from === from && holdsAll(l)))
+        if (passes) next.push(from)
+        else stops.add(from)
       }
     }
     frontier = next
   }
-  const stopped = found.map((r) => r.spec).filter((s) => CONTRACTS.includes(s.kind) && links.some((l) => l.target === s && !seen.has(l.from)))
+  const stopped = [...stops].filter((s) => links.some((l) => l.target === s && !seen.has(l.from)))
   const frozen = specs.deprecated.filter((s) => linksOf(s, byName).some((l) => l.target === target && reaches(l)))
   return { found, stopped, frozen }
 }

@@ -686,14 +686,21 @@ specs that use that one error code, field or rule. That includes the specs that 
 
 Reach passes through screens, components, flows and policies, but stops at a model or API. Those
 are contracts: a change reaches their users only if it changes the contract, and then that's an
-amendment to the model or API too, with its own `--refs`. The output names where it stopped:
+amendment to the model or API too, with its own `--refs`. Where it stopped at one that has
+users not already listed, the output says so. Say only GetAlbum's rules mention CanBuyAlbum, and
+a Checkout flow calls GetAlbum:
 
 ```
-$ node scripts/spec-lint.mjs --refs Album#id
-Album#id (model, approved) is relied on by:
-  GetAlbum  api  approved  response (all of Album)
+$ node scripts/spec-lint.mjs --refs CanBuyAlbum
+CanBuyAlbum (policy, approved) is relied on by:
+  GetAlbum  api  approved  rules
 Stops at GetAlbum (api): a contract with its own users, which this change reaches only if it alters that contract; if so, run --refs on it.
 ```
+
+A change to a model is the exception. It reaches on through any model or API that holds all of
+it, in Fields, Request or Response. GetAlbum's Response is `[[model:Album]]`, so a change to
+Album changes what GetAlbum returns, though GetAlbum's own text stays the same, and
+`--refs Album` lists Checkout under GetAlbum.
 
 `--refs` only sees specs. Code that uses a spec but isn't described by one (a helper that builds
 prompts, a script) doesn't show up, so search the code too when that matters.
