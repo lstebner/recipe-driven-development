@@ -167,6 +167,14 @@ grep -q "^- AlbumDetail (screen)$" "$repo/specs/components/ArtistBadge.md" && pa
 out="$(lint --fix)"; [[ "$out" != *updated* ]] && pass "--fix is idempotent" || fail "--fix idempotent" "$out"
 out="$(lint --summary)"
 [[ "$out" == *"1/2"* && "$out" == *"~ReleaseTimeline"* && "$out" == *"ArtistBadge"*"← AlbumDetail"* ]] && pass "summary shows coverage + shared/one-off" || fail "summary" "$out"
+for py in src/test_album_detail.py src/album_detail_test.py; do
+  echo 'def test_owned():  # [AlbumDetail.R2]' > "$repo/$py"
+  out="$(lint --summary)"; [[ "$out" == *"2/2"* ]] && pass "summary counts tests tagged in $(basename "$py")" || fail "python test $py" "$out"
+  rm "$repo/$py"
+done
+mkdir -p "$repo/bazel-out/src"; echo 'def test_owned():  # [AlbumDetail.R2]' > "$repo/bazel-out/src/test_album_detail.py"
+out="$(lint --summary)"; [[ "$out" == *"1/2"* ]] && pass "  ...but not copies in Bazel's output folders" || fail "bazel-out" "$out"
+rm -r "$repo/bazel-out"
 
 screen="$repo/specs/screens/AlbumDetail.md"
 mutate() { # mutate <name> <expect_err|expect_warn> <substring> <sed expr>
@@ -415,7 +423,19 @@ grep -q "^- DesktopNav (component)$" "$policy" && grep -q "^- MobileNav (compone
   && pass "Used by lists every spec that relies on a policy" || fail "policy Used by" "$(cat "$policy")"
 out="$(lint --summary)"; [[ "$out" == *"NavLinks"*"← DesktopNav, MobileNav"* ]] && pass "summary lists policy users" || fail "summary policies" "$out"
 mutate_in "$repo/specs/components/MobileNav.md" "policy: unknown policy ref" expect_err "[[policy:Nope]] has no spec — create specs/policies/Nope.md" 's/policy:NavLinks\]\]  →/policy:Nope]]  →/'
-mutate_in "$repo/specs/components/MobileNav.md" "policy: no members" expect_err "only models (#field) and APIs (#error_code) have members" 's/policy:NavLinks\]\]  →/policy:NavLinks#admin]]  →/'
+mutate_in "$repo/specs/components/MobileNav.md" "policy: no members" expect_err "NavLinks is a policy spec; only rules (#R1), model fields (#field) and API error codes (#error_code) can be linked to" 's/policy:NavLinks\]\]  →/policy:NavLinks#admin]]  →/'
+mutate_in "$repo/specs/components/MobileNav.md" "a link can cite one of a spec's rules" expect_ok "" 's/policy:NavLinks\]\]  →/policy:NavLinks#R1]]  →/'
+mutate_in "$repo/specs/components/MobileNav.md" "  ...which must exist" expect_err "[[policy:NavLinks#R9]]: NavLinks has no rule R9 (known: R1)" 's/policy:NavLinks\]\]  →/policy:NavLinks#R9]]  →/'
+cp "$repo/specs/components/MobileNav.md" "$repo/mobilenav.bak"; sed -i 's/policy:NavLinks\]\]  →/policy:NavLinks#R1]]  →/' "$repo/specs/components/MobileNav.md"
+out="$(refs NavLinks#R1)"; [[ "$out" == *$'\n  MobileNav'*"layout"* && "$out" == *$'\n  DesktopNav'*"(all of NavLinks)"* ]] \
+  && pass "--refs Name#R1 lists who cites that rule, and who links to the whole spec" || fail "--refs rule" "$out"
+mv "$repo/mobilenav.bak" "$repo/specs/components/MobileNav.md"
+cp "$policy" "$policy.bak"; printf '\n## Must not\n- Never depend on what [[api:GetAlbum]] returns.\n' >> "$policy"
+expect_ok "a link under Must not doesn't count as relying on it (GetAlbum's Used by isn't stale)"
+out="$(refs GetAlbum)"; [[ "$out" != *"NavLinks"* ]] && pass "  ...and --refs leaves it out" || fail "--refs must not" "$out"
+sed -i 's/api:GetAlbum\]\] returns/api:Nope]] returns/' "$policy"
+expect_err "  ...but it still has to resolve" "[[api:Nope]] has no spec"
+mv "$policy.bak" "$policy"
 mutate_in "$policy" "policy: duplicate input" expect_err 'duplicate key "user" in Inputs' 's/^| region |/| user |/'
 mutate_in "$policy" "policy: Rules required" expect_err 'missing required section "## Rules"' 's/^## Rules/## Notes/'
 nav="$repo/specs/components/MobileNav.md"

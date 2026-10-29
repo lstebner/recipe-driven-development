@@ -13,6 +13,9 @@ status: draft
 ## Relationships
 <!-- - artist: many ModelNames → one [[model:Artist]]; deleting the Artist does ... -->
 
+## Storage
+<!-- Optional: where it's kept (a table, a bucket, a file) and what's written together, in plain words. -->
+
 ## Rules
 <!-- Invariants. - R1: price is never negative. -->
 

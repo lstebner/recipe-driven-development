@@ -8,7 +8,8 @@ endpoint:          # e.g. GET /albums/{id}
 <!-- What a caller gets done with it, in one line. -->
 
 ## Auth
-<!-- Who may call it, and which error they get if they can't. -->
+<!-- Who may call it, and which error they get if they can't. If every endpoint identifies the caller
+     the same way, link to the policy that says how (e.g. [[policy:CallerIdentity]]) instead of repeating it. -->
 
 ## Request
 | field | type | required | notes |
@@ -18,6 +19,8 @@ endpoint:          # e.g. GET /albums/{id}
 <!-- e.g. "200: [[model:Album]]", or a field table. -->
 
 ## Errors
+<!-- code: the code the service sends. If it only sends a message, name the case in plain words and
+     put what it sends in "when". Never invent a code the service doesn't send. -->
 | code | status | when |
 |---|---|---|
 

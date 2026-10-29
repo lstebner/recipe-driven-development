@@ -41,7 +41,8 @@ Offer to verify its `replaced_by` instead.
      required-ness, and no extra fields the spec doesn't mention; relationships and delete
      behaviour match.
    - **api:** the route matches `endpoint`; request and response shapes match (including the
-     referenced models); every row in Errors is produced with that status and code; Auth is enforced.
+     referenced models); every row in Errors is produced with that status and code (or, for a
+     service that sends no codes, the message the row says); Auth is enforced.
    - **flow:** each step's screen or API exists and links to the next as written, including every branch.
    - **policy:** the decision is made in one place, and every spec in Used by gets its answer
      from there rather than working it out again or adjusting it (filtering, reordering, adding
