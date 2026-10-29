@@ -87,8 +87,8 @@ points somewhere other than its spec.
 | `deprecated` | off the menu: kept as a record, never built against or edited again | Claude proposes it; **you confirm** |
 
 Once a spec leaves `draft`, its frontmatter, anything before its first heading, and every
-section except **Used by**, **Open amendments** and **Decisions** are protected. Claude Code will
-ask your permission before any edit touches them.
+section except **Used by**, **Open amendments**, **Decisions** and **Source** are protected.
+Claude Code will ask your permission before any edit touches them.
 
 ### Tasting (`verified`)
 
@@ -147,13 +147,13 @@ From then on the spec is **frozen**:
   message (see [Noticing your changes](#noticing-your-changes)) and finishes the job: it removes
   the `deprecated` and `replaced_by` lines, adds a dated line under Decisions and puts the spec
   back in `outline.md`. From then on it's checked in full again, so anything that went stale while
-  it was frozen, such as a `source` file that has since moved, shows up in lint. Or write a new
+  it was frozen, such as a Source file that has since moved, shows up in lint. Or write a new
   spec.
 - **Never built against.** Claude follows `replaced_by` instead, and doesn't extend code that only
   exists for the deprecated spec. If the replacement has been deprecated in turn, the chain is
   followed to its end: when BuyButton was replaced by PrimaryButton, and PrimaryButton later by
   ActionButton, everything that still uses BuyButton is told to use ActionButton. When Claude
-  edits a file listed in its `source`, a hook reminds it that the spec is deprecated.
+  edits a file listed under its Source, a hook reminds it that the spec is deprecated.
 - **Still visible.** Lint warns wherever a live spec still points at it (fix those with an
   amendment), and `--summary` lists every deprecated spec with any tests still tagged with its
   rules: that's code that hasn't caught up yet.
@@ -239,7 +239,6 @@ time the spec is verified.
 ---
 screen: AlbumDetail             # must match the filename
 status: approved
-source: [apps/web/src/app/albums/[id]/page.tsx]   # optional until implemented
 ---
 
 ## Goal
@@ -279,13 +278,23 @@ Let a listener see an album's details and release history, and buy it.
 ## Open amendments
 
 ## Decisions
+
+## Source
+- `apps/web/src/app/albums/[id]/page.tsx`
 ````
 
 Required sections: **Goal**, **Rules**. Everything else is optional: write only what matters.
 
-`source` (and `uses`, `local`, `replaced_by`) take one value or a list, written `[a, b]` or one
-`- item` per line. Quote a path with a comma in it, such as a route group:
-`source: ["apps/web/src/app/(shop,cart)/page.tsx"]`.
+**Source** lists the files the spec is built in, one `- path` per line, in backticks or not. It's
+optional until the spec is `implemented`, and Claude keeps it up to date as it builds. It's last
+because it's for the tools more than for you: lint checks each file exists and imports the
+components in `uses`, a hook lints again whenever one of them is edited, and `/spec-verify` checks
+them against the spec. Like Decisions it isn't protected or part of the fingerprint. (Older specs
+list these files in a frontmatter `source:` field; `node scripts/spec-lint.mjs --fix` moves it
+here.)
+
+`uses`, `local` and `replaced_by` take one value or a list, written `[a, b]` or one `- item` per
+line. Quote a value with a comma in it.
 
 ## Component spec
 
@@ -293,7 +302,6 @@ Required sections: **Goal**, **Rules**. Everything else is optional: write only 
 ---
 component: PrimaryButton
 status: approved
-source: packages/ui/src/PrimaryButton.tsx
 ---
 
 ## Purpose
@@ -323,6 +331,9 @@ The single call-to-action on a screen.
 ## Open amendments
 
 ## Decisions
+
+## Source
+- `packages/ui/src/PrimaryButton.tsx`
 ````
 
 Required section: **Purpose**. A component can compose other shared components: give it a
@@ -399,7 +410,6 @@ A data entity. Screens and APIs reference it rather than redefining its fields.
 ---
 model: Album
 status: approved
-source: [packages/db/schema/album.ts]
 ---
 
 ## Purpose
@@ -427,6 +437,9 @@ An album listed for sale.
 ## Open amendments
 
 ## Decisions
+
+## Source
+- `packages/db/schema/album.ts`
 ````
 
 Required sections: **Purpose**, **Fields**. **Storage** is optional: where the entity is kept
@@ -442,7 +455,6 @@ One endpoint (or RPC, or webhook). The contract the frontend and backend both bu
 api: GetAlbum
 status: approved
 endpoint: GET /albums/{id}
-source: [apps/api/src/routes/albums.ts]
 ---
 
 ## Purpose
@@ -474,6 +486,9 @@ Public. Signed-in callers also get `owned`.
 ## Open amendments
 
 ## Decisions
+
+## Source
+- `apps/api/src/routes/albums.ts`
 ````
 
 Required sections: **Purpose**, **Rules**, plus `endpoint` in the frontmatter. No two API specs
@@ -507,7 +522,6 @@ different ways, like a mobile and a desktop menu that must always list the same 
 ---
 policy: CanBuyAlbum
 status: approved
-source: [apps/api/src/policies/canBuyAlbum.ts]
 ---
 
 ## Purpose
@@ -546,6 +560,9 @@ One of `buy`, `owned` or `unavailable`.
 ## Open amendments
 
 ## Decisions
+
+## Source
+- `apps/api/src/policies/canBuyAlbum.ts`
 ````
 
 Required sections: **Purpose**, **Rules**. Inputs and Output say what the decision takes and
@@ -752,7 +769,7 @@ prompt and a verified spec stays verified.
 ## Tools
 
 - `node scripts/spec-lint.mjs`: validate everything (also runs automatically after Claude edits).
-- `node scripts/spec-lint.mjs --fix`: regenerate `Used by`.
+- `node scripts/spec-lint.mjs --fix`: regenerate `Used by`, link outline entries to their specs, and move a frontmatter `source:` into **Source**.
 - `node scripts/spec-lint.mjs --summary`: dashboard of status, rule/test coverage, open amendments, and what's shared vs one-off.
 - `node scripts/spec-lint.mjs --new <kind> <Name>`: create one draft spec from its template.
 - `node scripts/spec-lint.mjs --scaffold`: create a draft for every outline entry without a spec.
