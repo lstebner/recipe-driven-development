@@ -331,8 +331,8 @@ out="$(refs Album)"; [[ "$out" == *"GetAlbum"*"response"* && "$out" == *"Checkou
 out="$(refs Album#price)"
 [[ "$out" == *"Checkout  flow  approved  step 2"* && "$out" == *"GetAlbum  api   approved  response (all of Album)"* ]] \
   && pass "--refs Name#field lists links to that field, and to the whole model, marked" || fail "--refs field" "$out"
-out="$(refs Album#id)"; [[ "$out" == *$'\n  GetAlbum'* && "$out" != *$'\n  Checkout'* && "$out" == *$'\n    Checkout'* ]] \
-  && pass "  ...but not links to its other fields (Checkout only through GetAlbum)" || fail "--refs other field" "$out"
+out="$(refs Album#id)"; [[ "$out" == *$'\n  GetAlbum'* && "$out" != *$'\n  Checkout'* && "$out" == *$'\n    Checkout'* && "$out" != *"Stops at"* ]] \
+  && pass "  ...but not links to its other fields (Checkout only through GetAlbum, which returns all of Album)" || fail "--refs other field" "$out"
 out="$(refs GetAlbum#not_found)"; [[ "$out" == *"Checkout"*"step 1"* ]] && pass "--refs Name#error_code too" || fail "--refs error code" "$out"
 out="$(refs Album#cost)"; [[ $? -eq 1 && "$out" == *'Album has no field "cost" (known: id, price)'* ]] && pass "--refs refuses a member that isn't there" || fail "--refs bad member" "$out"
 out="$(refs Checkout)"; [[ "$out" == "Nothing live relies on Checkout (flow, approved)." ]] && pass "--refs says when nothing relies on a spec" || fail "--refs none" "$out"
@@ -436,6 +436,11 @@ out="$(refs GetAlbum)"; [[ "$out" != *"NavLinks"* ]] && pass "  ...and --refs le
 sed -i 's/api:GetAlbum\]\] returns/api:Nope]] returns/' "$policy"
 expect_err "  ...but it still has to resolve" "[[api:Nope]] has no spec"
 mv "$policy.bak" "$policy"
+cp "$repo/specs/apis/GetAlbum.md" "$repo/getalbum.bak"; sed -i '/^- GetAlbum.R1:/a - GetAlbum.R2: Lists only what [[policy:NavLinks]] allows.' "$repo/specs/apis/GetAlbum.md"
+out="$(refs NavLinks)"; [[ "$out" == *$'\n  GetAlbum'* && "$out" != *"Checkout"* ]] && pass "--refs stops at an API that only mentions the spec" || fail "--refs stops at contracts" "$out"
+[[ "$out" == *"Stops at GetAlbum (api): a contract with its own users, which this change reaches only if it alters that contract"* ]] \
+  && pass "  ...and says so" || fail "--refs stop note" "$out"
+mv "$repo/getalbum.bak" "$repo/specs/apis/GetAlbum.md"
 mutate_in "$policy" "policy: duplicate input" expect_err 'duplicate key "user" in Inputs' 's/^| region |/| user |/'
 mutate_in "$policy" "policy: Rules required" expect_err 'missing required section "## Rules"' 's/^## Rules/## Notes/'
 nav="$repo/specs/components/MobileNav.md"

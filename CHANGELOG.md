@@ -34,6 +34,13 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
   and skips `.venv`, `venv`, `__pycache__`, `.tox` and Bazel's `bazel-*` output folders. The
   docs show tagging a Python test in its docstring, since its name can't hold the brackets.
 
+- `--refs` (and the prompt that lists who a change reaches) stops at a model or API instead of
+  following every link onward. Reach still passes through screens, components, flows and policies.
+  The output names the models and APIs it stopped at, since a change reaches their users only if
+  it changes their contract. Before, a policy a model mentioned "reached" every API that returned
+  anything holding that model. A change to a model still reaches on through every model or API
+  that holds all of it (in Fields, Request or Response), since those change shape with it.
+
 ## 0.3.0 (2026-10-27)
 
 - The spec templates leave a blank line after the closing `---` of the frontmatter, so the

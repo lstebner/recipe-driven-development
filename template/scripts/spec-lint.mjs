@@ -5,7 +5,7 @@
 //   --summary      status dashboard: specs, rules, tagged tests, open amendments, shared vs one-off
 //   --hash <Name>  print the fingerprint of a spec's protected content (goes in its /spec-verify report)
 //   --refs <Name>[#member]  list every live spec that relies on a spec (or on one rule / model field / API error code),
-//                  directly or through other specs, with its status and where it makes the link
+//                  directly or through other specs (stopping at models and APIs), with its status and where it makes the link
 //   --components <Name>  print the fingerprint of each shared component a spec is built from (goes in its report too)
 //   --map [Name]   write specs/.map.html: each screen's Layout drawn as nested boxes, and a graph of every spec and
 //                  what it relies on, coloured by status; with a Name, the page opens on that spec
@@ -867,6 +867,15 @@ const linksOf = (spec, byName) => {
 // the first step counts links to that member and links to the whole target, which take in every member (an API
 // that returns [[model:Album]] returns its price too), but not links to its other members. Those whole-target
 // links are marked in `where`. Deprecated specs are frozen, so they're returned apart.
+// Reach stops at a model or API: it's a contract with its own users, and a change only reaches them if it changes
+// the contract, which is an amendment to that spec in turn. Without the stop, a policy a model mentions would reach
+// every API that returns anything holding that model. The exception is a change to a model, which reaches on
+// through every model or API that holds all of it (a field typed [[model:Album]], a Response that is one): those
+// change shape with it, though their own text doesn't. Contracts it stops at that have users of their own come
+// back as `stopped`.
+const CONTRACTS = ["model", "api"]
+const HOLDS = ["fields", "request", "response"]
+const holdsAll = (l) => l.target.kind === "model" && l.member === undefined && HOLDS.includes(l.where)
 const reliedOnBy = (target, specs, member) => {
   const byName = byNameOf(specs.all)
   const links = specs.live.flatMap((s) => linksOf(s, byName))
@@ -874,6 +883,7 @@ const reliedOnBy = (target, specs, member) => {
   const whereOf = (l) => (member && l.target === target && l.member === undefined ? `${l.where} (all of ${target.name})` : l.where)
   const found = []
   const seen = new Set([target])
+  const stops = new Set()
   let frontier = [target]
   while (frontier.length) {
     const next = []
@@ -882,13 +892,16 @@ const reliedOnBy = (target, specs, member) => {
       for (const from of [...new Set(into.map((l) => l.from))].sort((a, b) => a.name.localeCompare(b.name))) {
         seen.add(from)
         found.push({ spec: from, parent: node === target ? null : node, where: [...new Set(into.filter((l) => l.from === from).map(whereOf))] })
-        next.push(from)
+        const passes = !CONTRACTS.includes(from.kind) || (target.kind === "model" && into.some((l) => l.from === from && holdsAll(l)))
+        if (passes) next.push(from)
+        else stops.add(from)
       }
     }
     frontier = next
   }
+  const stopped = [...stops].filter((s) => links.some((l) => l.target === s && !seen.has(l.from)))
   const frozen = specs.deprecated.filter((s) => linksOf(s, byName).some((l) => l.target === target && reaches(l)))
-  return { found, frozen }
+  return { found, stopped, frozen }
 }
 
 // "AlbumDetail (verified), Shelf (implemented, through Card)": for a hook prompt, so the user sees what a change reaches.
@@ -910,7 +923,7 @@ const refsReport = (query, specs) => {
   if (!target) return { error: `no spec named "${name ?? ""}"` }
   const problem = member && memberProblem(target, member)
   if (problem) return { error: problem }
-  const { found, frozen } = reliedOnBy(target, specs, member)
+  const { found, stopped, frozen } = reliedOnBy(target, specs, member)
   const label = `${query} (${target.kind}, ${statusOf(target)})`
   const out = []
   if (!found.length) out.push(`Nothing live relies on ${label}.`)
@@ -936,6 +949,11 @@ const refsReport = (query, specs) => {
       }
     }
     print(target)
+  }
+  if (stopped.length) {
+    const names = stopped.map((s) => `${s.name} (${s.kind})`).join(", ")
+    const one = stopped.length === 1
+    out.push(`Stops at ${names}: ${one ? "a contract with its" : "contracts with their"} own users, which this change reaches only if it alters ${one ? "that contract; if so, run --refs on it" : "one of them; if so, run --refs on that one"}.`)
   }
   if (frozen.length) out.push(`Also referenced by deprecated ${frozen.length === 1 ? "spec" : "specs"} ${frozen.map((s) => s.name).join(", ")}, which won't change.`)
   return { text: out.join("\n") }

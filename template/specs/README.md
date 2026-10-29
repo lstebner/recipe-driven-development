@@ -684,6 +684,27 @@ PrimaryButton (component, approved) is relied on by:
 specs that use that one error code, field or rule. That includes the specs that link to the whole API or model, marked
 `(all of Album)`: an API that returns `[[model:Album]]` returns its price too.
 
+Reach passes through screens, components, flows and policies, but stops at a model or API. Those
+are contracts: a change reaches their users only if it changes the contract, and then that's an
+amendment to the model or API too, with its own `--refs`. Where it stopped at one that has
+users not already listed, the output says so. Say only GetAlbum's rules mention CanBuyAlbum, and
+a Checkout flow calls GetAlbum:
+
+```
+$ node scripts/spec-lint.mjs --refs CanBuyAlbum
+CanBuyAlbum (policy, approved) is relied on by:
+  GetAlbum  api  approved  rules
+Stops at GetAlbum (api): a contract with its own users, which this change reaches only if it alters that contract; if so, run --refs on it.
+```
+
+A change to a model is the exception. It reaches on through any model or API that holds all of
+it, in Fields, Request or Response. GetAlbum's Response is `[[model:Album]]`, so a change to
+Album changes what GetAlbum returns, though GetAlbum's own text stays the same, and
+`--refs Album` lists Checkout under GetAlbum.
+
+`--refs` only sees specs. Code that uses a spec but isn't described by one (a helper that builds
+prompts, a script) doesn't show up, so search the code too when that matters.
+
 Then it applies the amendment straight away: merges the change, removes the entry and adds a
 line to Decisions, all in one edit. That edit triggers a prompt naming the amendment
 ("Accept amendment A1 (…)?"). The prompt also lists who relies on the spec, so you can see what
@@ -731,7 +752,7 @@ prompt and a verified spec stays verified.
 - `node scripts/spec-lint.mjs --new <kind> <Name>`: create one draft spec from its template.
 - `node scripts/spec-lint.mjs --scaffold`: create a draft for every outline entry without a spec.
 - `node scripts/spec-lint.mjs --hash <Name>`: the spec's fingerprint, which `/spec-verify` stamps into its report.
-- `node scripts/spec-lint.mjs --refs <Name>[#member]`: every live spec that relies on it, directly or through other specs, with its status and where the link is.
+- `node scripts/spec-lint.mjs --refs <Name>[#member]`: every live spec that relies on it, directly or through other specs (stopping at models and APIs), with its status and where the link is.
 - `node scripts/spec-lint.mjs --components <Name>`: the fingerprint of each component the spec is built from, for the report's `Components:` line.
 - `node scripts/spec-lint.mjs --map [Name]`: writes `specs/.map.html`, a page to open in your browser. It draws each screen's Layout as nested boxes and graphs every spec against what it relies on, coloured by status. Click a spec to see its rules and who relies on it.
 - `node scripts/spec-lint.mjs --version`: the version of the kit this repo has; see the kit's CHANGELOG.md for what each one changed.
