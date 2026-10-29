@@ -424,7 +424,9 @@ An album listed for sale.
 ## Decisions
 ````
 
-Required sections: **Purpose**, **Fields**.
+Required sections: **Purpose**, **Fields**. **Storage** is optional: where the entity is kept
+(a table, a bucket, a file) and what's written together, in plain words, when that matters to
+anyone reading or writing it outside this code.
 
 ## API spec
 
@@ -471,6 +473,16 @@ Public. Signed-in callers also get `owned`.
 
 Required sections: **Purpose**, **Rules**, plus `endpoint` in the frontmatter. No two API specs
 may claim the same endpoint.
+
+The first column of Errors is what other specs link to (`[[api:GetAlbum#not_found]]`). Use the
+code the service actually sends. If it sends only a message, such as `{"error": "album not
+found"}`, name the case in plain words and say what's sent in `when`:
+`| not_found | 404 | no album with that id; sends {"error": "album not found"} |`. Never invent
+a code the service doesn't send: a caller reading the spec would build against it.
+
+Who the caller is (a session, a token from a gateway, an API key) usually works the same way for
+every endpoint. Write it once as a policy, and have each API's Auth section link to it rather
+than repeat it.
 
 ## Policy spec
 
@@ -573,9 +585,15 @@ APIs and policies get a generated **Used by** listing everyone who points at the
 | `[[model:Album]]` / `[[model:Album#price]]` | a model, or one of its fields |
 | `[[api:GetAlbum]]` / `[[api:GetAlbum#not_found]]` | an API, or one of its error codes |
 | `[[policy:CanBuyAlbum]]` | a policy spec |
+| `[[policy:CanBuyAlbum#R2]]` | one of a spec's rules (any kind of spec) |
 
 So a screen can say `- not-found: when [[api:GetAlbum#not_found]], show {copy.notFound}`, and lint
-will catch it if that error code is renamed.
+will catch it if that error code is renamed, or that rule is removed.
+
+A link means "this spec relies on that one", so it shows up in Used by and in `--refs`. Under
+**Must not** it means the opposite, so there it's only checked: `- Never depend on
+[[model:Session]]` doesn't make Session's Used by list it. Anywhere else, to say a spec *doesn't*
+use something, write the name without brackets.
 
 ## Layout tree grammar
 
@@ -635,7 +653,8 @@ props. Lint warns about each, and they keep working. To convert them, run `/spec
 - Don't renumber IDs. If a rule is removed, its number retires.
 - Write rules so they can be checked as pass or fail. "Feels fast" can't be checked; "shows a skeleton within 100 ms" can.
 - Tag tests with the rule ID in brackets so verification can find them:
-  `it("[AlbumDetail.R1] hides buy when owned", ...)`.
+  `it("[AlbumDetail.R1] hides buy when owned", ...)`. Where a test's name can't hold brackets, as in
+  Python, put the tag in its docstring: `"""[GetAlbum.R1] an unlisted album is not found"""`.
 
 ## Amendments
 
@@ -661,8 +680,8 @@ PrimaryButton (component, approved) is relied on by:
     Checkout   flow    approved  step 1
 ```
 
-`--refs GetAlbum#not_found` or `--refs Album#price` narrows it to the specs that use that one
-error code or field. That includes the specs that link to the whole API or model, marked
+`--refs GetAlbum#not_found`, `--refs Album#price` or `--refs CanBuyAlbum#R2` narrows it to the
+specs that use that one error code, field or rule. That includes the specs that link to the whole API or model, marked
 `(all of Album)`: an API that returns `[[model:Album]]` returns its price too.
 
 Then it applies the amendment straight away: merges the change, removes the entry and adds a

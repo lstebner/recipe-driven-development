@@ -16,6 +16,24 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
 
 ## Unreleased
 
+- A link can cite one rule of another spec: `[[model:Highlight#R7]]`. Lint checks the rule exists,
+  and `--refs Highlight#R7` lists the specs that cite it, plus those that link to all of Highlight.
+
+- A link under **Must not** ("never depend on [[api:X]]") is checked but no longer counts as
+  relying on its target. **Breaking**, rarely: if a spec's Must not links to another spec, run
+  `node scripts/spec-lint.mjs --fix` to drop it from the target's Used by. If the target is a policy,
+  the spec with the Must not, and verified specs that rely on it, go stale and need re-verifying.
+
+- Better fit for a backend on its own. The API template and `specs/README.md` say what to put in
+  Errors when a service sends only a message and no error codes, rather than inventing codes.
+  `/spec-review` flags codes that look invented, and `/spec-verify` checks the message instead.
+  Caller identity is suggested as a policy that each API's Auth links to. Models get an optional
+  **Storage** section.
+
+- `--summary` counts tagged tests in Python's `test_*.py` and `*_test.py` files wherever they are,
+  and skips `.venv`, `venv`, `__pycache__`, `.tox` and Bazel's `bazel-*` output folders. The
+  docs show tagging a Python test in its docstring, since its name can't hold the brackets.
+
 ## 0.3.0 (2026-10-27)
 
 - The spec templates leave a blank line after the closing `---` of the frontmatter, so the

@@ -20,7 +20,7 @@ and follows it; the user tastes the result before it's called done. The format i
   incomplete or impossible, add an entry under `## Open amendments` (Finding / Change / Affects /
   Shared/one-off impact), tell the user in a sentence, and pause the work that depends on it.
   Before writing Affects, or changing any spec others build on, run
-  `node scripts/spec-lint.mjs --refs <Name>` (or `<Name>#member` for one field or error code). Name
+  `node scripts/spec-lint.mjs --refs <Name>` (or `<Name>#member` for one field, error code or rule). Name
   the specs it lists that the change really touches, and say which of them are verified. Then
   apply it in a single edit: merge the change, remove the entry, and add a dated line under
   `## Decisions`. The hook asks the user to accept it by name, and that prompt is their decision.
@@ -71,7 +71,8 @@ and follows it; the user tastes the result before it's called done. The format i
   in plain words, and behaviour goes in Rules. A spec still in the old `## Props / States` format
   can be converted with `/spec-migrate`. Mention it when you're working on one, but don't convert
   it unasked.
-- **Tests** that check a rule include its full ID in brackets: `it("[AlbumDetail.R1] ...")`.
+- **Tests** that check a rule include its full ID in brackets: `it("[AlbumDetail.R1] ...")`, or
+  in the docstring where the name can't hold it (Python).
 - **Verification** checks the spec as written. Never weaken a test or reinterpret a rule to make
   it pass; a mismatch is either a bug or an amendment. Mark a rule 👤 only when a person genuinely
   has to judge it, never to get past a check you could have run.

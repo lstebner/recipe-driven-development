@@ -89,8 +89,9 @@ You may need to **keep permission prompts on.** Your sign-off is a Claude Code p
 Under modes that skip prompts, the "ask" may never reach you, and the locks quietly stop working.
 
 The spec kinds (screen, component, flow, model, API, policy) are shaped for apps with a UI and a
-backend. CLIs, libraries and background jobs fit less well; a model, API or policy spec usually
-comes closest. If you're interested in using this repo for those things, feel free to file issues or
+backend, but a backend on its own works too: APIs, models and policies cover a service, and a flow
+covers a CLI or a background job, with Exits saying what's left behind when one stops partway.
+Libraries fit less well. If you're interested in using this repo for those things, feel free to file issues or
 make a fork and improve it.
 
 What gets installed into the repo:

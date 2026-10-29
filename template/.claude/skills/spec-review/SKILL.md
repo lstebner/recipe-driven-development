@@ -71,6 +71,8 @@ partial data, very long text or names, zero / one / many items, first-time use.
 **APIs**
 - Request and response shapes reference models rather than redefining their fields.
 - Every way it can fail has a row in Errors, including auth, validation, not found, conflict and rate limits.
+- Each error code is one the service actually sends. If it only sends a message, the row names the case
+  in plain words and says what's sent; flag any code that looks invented.
 - Auth says who can call it and what error everyone else gets.
 - Side effects, idempotency, ordering and pagination are stated where they apply.
 - Every screen that calls it handles each of its error codes in States.
