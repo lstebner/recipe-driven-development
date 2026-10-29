@@ -1,7 +1,6 @@
 ---
 model: Album
 status: verified
-source: [src/album.mjs]
 ---
 
 ## Purpose
@@ -32,3 +31,6 @@ An album listed for sale.
 
 ## Decisions
 - 2026-10-26: Validation lives in makeAlbum, not the database; every write goes through it for now. Revisit when something else writes albums.
+
+## Source
+- `src/album.mjs`

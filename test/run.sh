@@ -103,7 +103,6 @@ screen: AlbumDetail
 status: approved
 uses: [ArtistBadge, PrimaryButton]
 local: [ReleaseTimeline]
-source: [src/AlbumDetail.tsx]
 ---
 ## Goal
 Let a listener see an album's details and release history, and buy it.
@@ -132,6 +131,9 @@ Let a listener see an album's details and release history, and buy it.
 ## Open amendments
 
 ## Decisions
+
+## Source
+- `src/AlbumDetail.tsx`
 EOF
 for c in ArtistBadge PrimaryButton; do
   cat > "$repo/specs/components/$c.md" <<EOF
@@ -198,16 +200,45 @@ mutate "unknown token"           expect_err  'unknown token $radius.xl'         
 mutate "raw value in Style"      expect_warn 'raw value "#fff"'                    's/and \$shadow.card/and #fff/'
 mutate "missing required section" expect_err 'missing required section "## Goal"'  's/^## Goal/## Purpose/'
 echo 'import { PrimaryButton } from "x"' > "$repo/src/Other.tsx"
-mutate "implemented but import missing" expect_err "uses ArtistBadge but its source never imports it" 's/^status: approved/status: implemented/; s#^source: .*#source: [src/Other.tsx]#'
+src='s|^- `src/AlbumDetail.tsx`$|'   # replace the screen's one ## Source item with: ...|
+mutate "implemented but import missing" expect_err "uses ArtistBadge but its source never imports it" 's/^status: approved/status: implemented/; '"$src"'- src/Other.tsx|'
 mkdir -p "$repo/src/(shop,cart)" "$repo/src/a #1"
 cp "$repo/src/AlbumDetail.tsx" "$repo/src/(shop,cart)/page.tsx"; cp "$repo/src/AlbumDetail.tsx" "$repo/src/a #1/page.tsx"
 built='s/^status: approved/status: implemented/'
-mutate "a quoted source path keeps its commas"        expect_ok  "" "$built"'; s|^source: .*|source: ["src/(shop,cart)/page.tsx", src/AlbumDetail.tsx]|'
-mutate "  ...and so does one in brackets, unquoted"   expect_ok  "" "$built"'; s|^source: .*|source: [src/(shop,cart)/page.tsx]|'
-mutate "  ...or a single quoted path"                 expect_ok  "" "$built"'; s|^source: .*|source: '"'"'src/(shop,cart)/page.tsx'"'"'|'
-mutate "a # inside quotes isn't a comment"            expect_ok  "" "$built"'; s|^source: .*|source: ["src/a #1/page.tsx"]  # the first one|'
-mutate "a source list can be one item per line"       expect_ok  "" "$built"'; s|^source: .*|source:\n  - "src/(shop,cart)/page.tsx"\n  - src/AlbumDetail.tsx|'
-mutate "  ...and each item is checked"                expect_err 'source "src/Nope.tsx" doesn'"'"'t exist' "$built"'; s|^source: .*|source:\n  - src/AlbumDetail.tsx\n  - src/Nope.tsx|'
+mutate "a ## Source path needs no quoting for commas or #"  expect_ok  "" "$built; $src"'- src/(shop,cart)/page.tsx\n- `src/a #1/page.tsx`|'
+mutate "  ...and each item is checked, at its own line"     expect_err 'AlbumDetail.md:37  error    source "src/Nope.tsx" doesn'"'"'t exist' "$built; $src"'- src/AlbumDetail.tsx\n- src/Nope.tsx|'
+mutate "implemented with nothing in ## Source warns"        expect_warn "status is implemented but ## Source lists no files" "$built; $src|"
+mutate "a line in ## Source that isn't an item warns"      expect_warn '## Source lists one file per line, as "- path/to/file"' "$src"'src/AlbumDetail.tsx|'
+legacy() { echo "$built; /^## Source\$/d; ${src}|; s|^status: implemented|status: implemented\n$1|"; }  # source in frontmatter, from before ## Source
+old='"source" in frontmatter is the old format'
+mutate "a frontmatter source still counts, with a warning"  expect_ok_warn "$old" "$(legacy 'source: [src/AlbumDetail.tsx]')"
+mutate "  ...and is checked"                                 expect_err 'uses ArtistBadge but its source never imports it' "$(legacy 'source: [src/Other.tsx]')"
+mutate "  ...keeping a quoted path's commas"                 expect_ok_warn "$old" "$(legacy 'source: ["src/(shop,cart)/page.tsx", src/AlbumDetail.tsx]')"
+mutate "  ...and one in brackets, unquoted"                  expect_ok_warn "$old" "$(legacy 'source: [src/(shop,cart)/page.tsx]')"
+mutate "  ...or a single quoted path"                        expect_ok_warn "$old" "$(legacy "source: 'src/(shop,cart)/page.tsx'")"
+mutate "  ...and a # inside quotes isn't a comment"          expect_ok_warn "$old" "$(legacy 'source: ["src/a #1/page.tsx"]  # the first one')"
+mutate "  ...and a list can be one item per line"            expect_ok_warn "$old" "$(legacy 'source:\n  - "src/(shop,cart)/page.tsx"\n  - src/AlbumDetail.tsx')"
+mutate "  ...each item checked"                              expect_err 'source "src/Nope.tsx" doesn'"'"'t exist' "$(legacy 'source:\n  - src/AlbumDetail.tsx\n  - src/Nope.tsx')"
+cp "$screen" "$screen.bak"; sed -i "$(legacy 'source:   # where it lives\n  - "src/(shop,cart)/page.tsx"\n  - src/AlbumDetail.tsx')" "$screen"
+hash="$(lint --hash AlbumDetail)"; out="$(lint --fix)"
+[[ "$out" == *'moved "source" into ## Source in: specs/screens/AlbumDetail.md'* && "$out" != *"$old"* ]] && ! grep -q "^source:" "$screen" && ! grep -q "^  - .*src/" "$screen" \
+  && [[ "$(tail -3 "$screen")" == $'## Source\n- `src/(shop,cart)/page.tsx`\n- `src/AlbumDetail.tsx`' ]] \
+  && pass "--fix moves a frontmatter source into ## Source, at the end" || fail "--fix moves source" "$out"$'\n'"$(cat "$screen")"
+[[ "$(lint --hash AlbumDetail)" == "$hash" ]] && pass "  ...without changing the fingerprint" || fail "move keeps hash" "$hash → $(lint --hash AlbumDetail)"
+out="$(lint --fix)"; [[ "$out" != *moved* ]] && pass "  ...once" || fail "move idempotent" "$out"
+mv "$screen.bak" "$screen"; cp "$screen" "$screen.bak"
+sed -i 's|^status: approved|status: approved\nsource: [src/AlbumDetail.tsx, "src/(shop,cart)/page.tsx"]|; s|^## Source$|## Source\n- src/a #1/page.tsx|; s|^- `src/AlbumDetail.tsx`$|- `src/AlbumDetail.tsx`\n|' "$screen"
+lint --fix >/dev/null
+[[ "$(sed -n '/^## Source$/,$p' "$screen")" == $'## Source\n- src/a #1/page.tsx\n- `src/AlbumDetail.tsx`\n- `src/(shop,cart)/page.tsx`' ]] \
+  && pass "  ...adding to a ## Source that's there, without repeating a path" || fail "move into existing" "$(cat "$screen")"
+mv "$screen.bak" "$screen"
+out="$(hook pre "$(edit_json "$screen" '- `src/AlbumDetail.tsx`' $'- `src/AlbumDetail.tsx`\n- src/Other.tsx')")"
+[[ -z "$out" ]] && pass "pre: Claude records source files in an approved spec without asking" || fail "pre: source" "$out"
+thing="$repo/specs/components/Thing.md"
+printf -- '---\ncomponent: Thing\nstatus: approved\n---\n## Purpose\nA thing.\n\n## Source\n- src/AlbumDetail.tsx\n' > "$thing"
+lint --fix >/dev/null
+[[ "$(sed -n '/^## Used by$/,$p' "$thing" | grep '^## ')" == $'## Used by\n## Source' ]] && pass "--fix puts Used by before ## Source" || fail "Used by before Source" "$(cat "$thing")"
+rm "$thing"; lint --fix >/dev/null
 rm -r "$repo/src/(shop,cart)" "$repo/src/a #1"
 mutate "draft with empty Rules is only a warning" expect_warn 'Rules needs at least one rule' 's/^status: approved/status: draft/; /^- AlbumDetail.R/d; s/→ R[12]//'
 cp "$screen" "$screen.bak"; sed -i 's/^status: approved/status: draft/; /^- AlbumDetail.R/d; s/→ R[12]//' "$screen"
@@ -215,7 +246,7 @@ out="$(lint)" && pass "  ...and doesn't fail the lint" || fail "draft leniency" 
 cp "$repo/specs/components/ArtistBadge.md" "$repo/specs/components/Other.md"
 sed -i 's/^component: ArtistBadge/component: Other/; s/^uses: .*/uses: []/' "$repo/specs/components/Other.md"
 cp "$screen" "$repo/specs/screens/Second.md"
-sed -i 's/^screen: AlbumDetail/screen: Second/; s/AlbumDetail\.R/Second.R/g; /^source:/d' "$repo/specs/screens/Second.md"
+sed -i 's/^screen: AlbumDetail/screen: Second/; s/AlbumDetail\.R/Second.R/g; /^## Source$/,$d' "$repo/specs/screens/Second.md"
 lint --fix >/dev/null
 expect_warn "same one-off in two specs warns" "also appears in Second — should it be shared?"
 rm "$repo/specs/screens/Second.md" "$repo/specs/components/Other.md"; lint --fix >/dev/null
@@ -682,7 +713,7 @@ out="$(hook pre "$(deprecate_json "$api" $'status: deprecated\ndeprecated: 2026-
 [[ "$out" == *'"deny"'* && "$out" == *"add a dated line under ## Decisions"*"use a single Write of the whole file, or a MultiEdit"* ]] && pass "pre: deprecating without a dated Decisions line is refused" || fail "pre: no decision" "$out"
 out="$(deprecate $'status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: GetAlbumV2')"
 [[ "$out" == *'"ask"'* && "$out" == *"Deprecate GetAlbum (approved → deprecated), replaced by GetAlbumV2?"* ]] && pass "pre: deprecating asks, naming the replacement" || fail "pre: deprecate" "$out"
-sed -i 's/^status: approved$/status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: GetAlbumV2\nsource: [src\/gone.ts]/' "$api"
+sed -i 's/^status: approved$/status: deprecated\ndeprecated: 2026-10-24\nreplaced_by: GetAlbumV2/' "$api"; printf '\n## Source\n- src/gone.ts\n' >> "$api"
 expect_err "a deprecated spec drops out of Used by" '"Used by" is stale'
 lint --fix >/dev/null
 expect_warn "a reference to a deprecated spec warns, naming the replacement" "[[api:GetAlbum]] points at GetAlbum, which is deprecated on 2026-10-24; use GetAlbumV2 instead"
@@ -896,7 +927,7 @@ own_edit "$lib" 's/^## Goal$/## Goal\nBrowse everything you own./'
 out="$(seen)"; [[ -z "$out" ]] && pass "seen: Claude's own edits aren't reported back to it" || fail "seen: own edit" "$out"
 sed -i 's/^status: approved$/status: implemented/' "$lib"; seen >/dev/null
 sed -i 's/^Browse everything you own.$/Browse every album you own./' "$lib"
-own_edit "$lib" 's/^status: implemented$/status: implemented\nsource: [src\/AlbumDetail.tsx]/'
+own_edit "$lib" 's/^## Goal$/## Source\n- src\/AlbumDetail.tsx\n\n## Goal/'
 out="$(seen)"; [[ "$out" == *"Library changed after it was built"* ]] && pass "seen: a change made before Claude's own edit is still reported" || fail "seen: absorbed" "$out"
 cp "$lib" "$lib.bak"; sed -i 's/^status: implemented$/status: approved/; s/^Browse every album you own.$/Browse all your albums./' "$lib"
 out="$(seen)"; [[ "$out" == *"Library went from implemented to approved: it needs building again."*"Library changed since you last read it"* ]] \

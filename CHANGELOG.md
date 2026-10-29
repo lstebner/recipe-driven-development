@@ -16,6 +16,14 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
 
 ## Unreleased
 
+- A spec's source files move out of the frontmatter into a **Source** section at the end, one
+  `- path` per line, so the top of a spec is only what it's about. Paths need no quoting, even
+  with a comma or a `#` in them. Source isn't protected or part of the fingerprint, so Claude
+  records files without a prompt and moving them doesn't make a report stale. After `--update`,
+  run `node scripts/spec-lint.mjs --fix` once to move each live spec's `source:` into the section;
+  until then lint warns, and the old field still counts. Deprecated specs are frozen, so theirs
+  stays where it is.
+
 - Outline entries link to their specs, so `specs/outline.md` works as a table of contents in a
   markdown editor: `- [AlbumDetail](screens/AlbumDetail.md): let a listener buy an album`.
   `--scaffold` links each entry once its spec exists, and `--fix` links any that aren't yet and
