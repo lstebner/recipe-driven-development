@@ -68,8 +68,13 @@ The outline is for sketching the whole project quickly:
 
 The text after the colon is yours, so it goes into the draft's Goal or Purpose (and for an API, a
 leading `GET /path` becomes its `endpoint`). Everything else in the draft is left for you to write.
-Lint warns about outline entries that don't have a spec yet, and errors if an entry's section
-doesn't match the kind of spec it became.
+Once a spec exists, `--scaffold` and `--fix` turn its entry into a link to the file, keeping the
+rest of the line, so the outline doubles as a table of contents in a markdown editor:
+`- [AlbumDetail](screens/AlbumDetail.md): let a listener see an album and buy it`.
+
+Lint warns about outline entries that don't have a spec yet, or that have one but aren't linked to
+it, and errors if an entry's section doesn't match the kind of spec it became, or if its link
+points somewhere other than its spec.
 
 ## Lifecycle
 

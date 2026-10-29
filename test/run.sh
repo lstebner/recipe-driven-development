@@ -817,15 +817,25 @@ grep -q "^policy: CanFollow$" "$repo/specs/policies/CanFollow.md" && grep -q "^w
   && pass "  ...a ## Policies entry becomes a policy draft" || fail "scaffold policy" "$(cat "$repo/specs/policies/CanFollow.md" 2>&1)"
 grep -q "^The ArtistBadge.$" "$repo/specs/components/ArtistBadge.md" && ! grep -q "^## Props" "$repo/specs/components/ArtistBadge.md" \
   && pass "  ...and existing specs are left alone" || fail "scaffold existing" "$(cat "$repo/specs/components/ArtistBadge.md")"
+grep -q '^- \[ArtistPage\](screens/ArtistPage.md): let a listener browse everything by one artist$' "$repo/specs/outline.md" && grep -q '^  - maybe a "follow" button' "$repo/specs/outline.md" \
+  && grep -q '^- \[AlbumDetail\](screens/AlbumDetail.md)$' "$repo/specs/outline.md" \
+  && pass "  ...and links each entry to its spec, keeping its note and the lines under it" || fail "scaffold links" "$(cat "$repo/specs/outline.md")"
 expect_ok "scaffolded drafts lint clean"
 out="$(scaffold)"; [[ "$out" == *"0 spec(s) created, 9 already existed"* ]] && pass "--scaffold is idempotent" || fail "--scaffold idempotent" "$out"
 echo "- Settings" >> "$repo/specs/outline.md"
 expect_warn "an outline entry without a spec warns" "Settings has no spec yet"
 outline="$repo/specs/outline.md"
-mutate_in "$outline" "outline entry under the wrong section" expect_err "listed under ## APIs but specs/models/Artist.md is a model spec" 's/^- Artist$/- Placeholder/; s/^- GetArtist:.*/- Artist/'
-mutate_in "$outline" "outline entry that isn't a name"      expect_err "isn't a spec name"                 's/^- TrackRow$/- Track row in a list/'
+mutate_in "$outline" "outline entry under the wrong section" expect_err "listed under ## APIs but specs/models/Artist.md is a model spec" 's/^- \[Artist\].*/- Placeholder/; s/^- \[GetArtist\].*/- Artist/'
+mutate_in "$outline" "outline entry that isn't a name"      expect_err "isn't a spec name"                 's/^- \[TrackRow\].*/- Track row in a list/'
 mutate_in "$outline" "outline section that isn't a kind"    expect_err 'unknown section "## Widgets"'     's/^## Flows$/## Widgets/'
-mutate_in "$outline" "outline entry listed twice"           expect_err "TrackRow is listed more than once" 's/^- Onboarding$/- TrackRow/'
+mutate_in "$outline" "outline entry listed twice"           expect_err "TrackRow is listed more than once" 's/^- \[Onboarding\].*/- TrackRow/'
+mutate_in "$outline" "outline link to the wrong file"       expect_err 'TrackRow links to "screens/TrackRow.md", but its spec is at components/TrackRow.md' 's|(components/TrackRow.md)|(screens/TrackRow.md)|'
+mutate_in "$outline" "outline link before its spec exists"  expect_ok_warn "Settings links to \"Settings.md\", but --scaffold will create its spec at screens/Settings.md" 's|^- Settings$|- [Settings](Settings.md)|'
+cp "$outline" "$outline.bak"; sed -i 's|^- \[TrackRow\](components/TrackRow.md)$|- **TrackRow**: a row|; s|^- \[Onboarding\](flows/Onboarding.md)$|* [Onboarding](nowhere.md)|' "$outline"
+expect_warn "an entry with a spec but no link warns" "TrackRow isn't a link to its spec yet"
+out="$(lint --fix)"; [[ "$out" == *"linked in specs/outline.md: TrackRow, Onboarding"* ]] && grep -q '^- \[TrackRow\](components/TrackRow.md): a row$' "$outline" && grep -q '^\* \[Onboarding\](flows/Onboarding.md)$' "$outline" \
+  && pass "--fix links it, and corrects a wrong link" || fail "--fix outline links" "$out"$'\n'"$(cat "$outline")"
+mv "$outline.bak" "$outline"
 bash_quiet "--scaffold is quiet to the shell hook" "node scripts/spec-lint.mjs --scaffold"
 rm "$repo"/specs/screens/ArtistPage.md "$repo"/specs/components/TrackRow.md "$repo"/specs/flows/Onboarding.md "$repo"/specs/models/Artist.md "$repo"/specs/apis/GetArtist.md "$repo"/specs/screens/NowPlaying.md "$repo"/specs/policies/CanFollow.md
 mv "$repo/specs/outline.md.orig" "$repo/specs/outline.md"

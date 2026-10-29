@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Recipe-Driven Development: validates specs/ against the format defined in specs/README.md.
 //   (no flag)      lint everything; exit 1 on errors
-//   --fix          regenerate the "Used by" section of component, model, API and policy specs, then lint
+//   --fix          regenerate the "Used by" section of component, model, API and policy specs, link each outline
+//                  entry to its spec, then lint
 //   --summary      status dashboard: specs, rules, tagged tests, open amendments, shared vs one-off
 //   --hash <Name>  print the fingerprint of a spec's protected content (goes in its /spec-verify report)
 //   --refs <Name>[#member]  list every live spec that relies on a spec (or on one rule / model field / API error code),
@@ -10,7 +11,7 @@
 //   --map [Name]   write specs/.map.html: each screen's Layout drawn as nested boxes, and a graph of every spec and
 //                  what it relies on, coloured by status; with a Name, the page opens on that spec
 //   --new <kind> <Name>  create a draft spec from specs/_templates/<kind>.md
-//   --scaffold     create a draft spec for every entry in specs/outline.md that doesn't have one yet
+//   --scaffold     create a draft spec for every entry in specs/outline.md that doesn't have one yet, and link each entry to its spec
 //   --hook-pre     Claude Code PreToolUse hook (Edit/Write): ask the user before protected spec content
 //                  changes; only allow `verified` with a passing report, and then only after the user confirms;
 //                  ask before a spec is deprecated, and refuse any edit to one that already is
@@ -235,6 +236,10 @@ const loadAll = () => {
 // ## Models, ## APIs and ## Policies. Each top-level bullet is "- Name" or "- Name: a line about it".
 const outlineFile = path.join(specsDir, "outline.md")
 const OUTLINE_HEADINGS = "## Screens, ## Components, ## Flows, ## Models, ## APIs or ## Policies"
+// An entry's name is plain (AlbumDetail, maybe in bold or backticks) or a link to its spec: [AlbumDetail](screens/AlbumDetail.md).
+const OUTLINE_NAME = /(?:\[([A-Za-z]\w*)\]\(([^)\s]*)\)|[*`]*([A-Za-z]\w*)[*`]*)/
+// Where an entry links to: its spec's path from specs/, where --scaffold creates it.
+const outlineLink = (kind, name) => `${KINDS[kind].dir}/${name}.md`
 const parseOutline = () => {
   if (!existsSync(outlineFile)) return null
   const entries = []
@@ -255,8 +260,8 @@ const parseOutline = () => {
       continue
     }
     for (const line of section.lines.filter((l) => /^[-*]\s+/.test(l.text))) {
-      const match = /^[-*]\s+[*`]*([A-Za-z]\w*)[*`]*\s*(?:(?::|—|–|\s-\s)\s*(.*))?$/.exec(line.text.trim())
-      if (match) entries.push({ n: line.n, kind, heading: section.name, name: match[1], note: (match[2] ?? "").trim() })
+      const match = new RegExp(`^[-*]\\s+${OUTLINE_NAME.source}\\s*(?:(?::|—|–|\\s-\\s)\\s*(.*))?$`).exec(line.text.trim())
+      if (match) entries.push({ n: line.n, kind, heading: section.name, name: match[1] ?? match[3], link: match[2], note: (match[4] ?? "").trim() })
       else problems.push({ n: line.n, message: `"${line.text.trim().replace(/^[-*]\s+/, "")}" isn't a spec name — write one word like AlbumDetail, optionally followed by ": a line about it"` })
     }
   }
@@ -790,6 +795,11 @@ const lint = ({ all, live, tokens, outline }) => {
       if (!spec) note("warning", entry.n, `${entry.name} has no spec yet — run: node scripts/spec-lint.mjs --scaffold`)
       else if (isDeprecated(spec)) note("error", entry.n, `${entry.name} is ${deprecationNote(spec, byName)} — take it off the outline, which lists only what's current`)
       else if (spec.kind !== entry.kind) note("error", entry.n, `${entry.name} is listed under ## ${entry.heading} but ${rel(spec.file)} is a ${spec.kind} spec`)
+      else if (entry.link === undefined) note("warning", entry.n, `${entry.name} isn't a link to its spec yet — run: node scripts/spec-lint.mjs --fix`)
+      const expected = outlineLink(entry.kind, entry.name)
+      if (entry.link === undefined || path.posix.normalize(entry.link) === expected) continue
+      if (spec) note("error", entry.n, `${entry.name} links to "${entry.link}", but its spec is at ${expected} — run: node scripts/spec-lint.mjs --fix`)
+      else note("warning", entry.n, `${entry.name} links to "${entry.link}", but --scaffold will create its spec at ${expected} and fix the link`)
     }
   }
 
@@ -830,6 +840,24 @@ const fixUsedBy = (specs) => {
     }
   }
   return changed
+}
+
+// Make each outline entry whose spec exists a link to it, keeping the rest of the line. Returns the names linked.
+const linkOutline = (specs) => {
+  const outline = parseOutline()
+  if (!outline) return []
+  const byName = byNameOf(specs.all)
+  const lines = normalize(readFileSync(outlineFile, "utf8")).split("\n")
+  const linked = []
+  for (const entry of outline.entries) {
+    const spec = byName.get(entry.name)
+    const expected = outlineLink(entry.kind, entry.name)
+    if (!spec || isDeprecated(spec) || spec.kind !== entry.kind || entry.link === expected) continue
+    lines[entry.n - 1] = lines[entry.n - 1].replace(new RegExp(`^(\\s*[-*]\\s+)${OUTLINE_NAME.source}`), (_, bullet) => `${bullet}[${entry.name}](${expected})`)
+    linked.push(entry.name)
+  }
+  if (linked.length) writeFileSync(outlineFile, lines.join("\n"))
+  return linked
 }
 
 const format = (problems) =>
@@ -1136,6 +1164,8 @@ const scaffold = () => {
   results.forEach(printResult)
   const created = results.filter((r) => r.created).length
   console.log(`${created} spec(s) created, ${results.filter((r) => r.kept).length} already existed`)
+  const linked = linkOutline(loadAll())
+  if (linked.length) console.log(`linked in ${rel(outlineFile)}: ${linked.join(", ")}`)
   return outline.problems.length || results.some((r) => r.error) ? 1 : 0
 }
 
@@ -1605,6 +1635,8 @@ else if (has("--refs")) {
   if (has("--fix")) {
     const changed = fixUsedBy(specs)
     if (changed.length) console.log(`updated "Used by" in: ${changed.join(", ")}`)
+    const linked = linkOutline(specs)
+    if (linked.length) console.log(`linked in ${rel(outlineFile)}: ${linked.join(", ")}`)
     specs = loadAll()
   }
   if (has("--summary")) console.log(summary(specs))

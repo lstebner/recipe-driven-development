@@ -14,6 +14,9 @@ Write each entry as `- Name`, or `- Name: a line about it`. The line becomes the
 Purpose. For an API, start the line with its endpoint: `- GetAlbum: GET /albums/{id} — fetch one album`.
 Anything indented under an entry is your own notes and isn't copied anywhere.
 
+Once an entry has a spec, `--scaffold` (or `--fix`) turns its name into a link to the file, so you
+can click through from here: `- [GetAlbum](apis/GetAlbum.md): GET /albums/{id} — fetch one album`.
+
 ## Screens
 
 ## Components
