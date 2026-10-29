@@ -16,6 +16,8 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
 
 ## Unreleased
 
+## 0.4.0 (2026-10-29)
+
 - A spec's source files move out of the frontmatter into a **Source** section at the end, one
   `- path` per line, so the top of a spec is only what it's about. Paths need no quoting, even
   with a comma or a `#` in them. Source isn't protected or part of the fingerprint, so Claude
