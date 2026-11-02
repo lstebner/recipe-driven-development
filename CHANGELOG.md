@@ -16,6 +16,19 @@ in `template/scripts/spec-lint.mjs` to match. Squash-merging that PR tags the me
 
 ## Unreleased
 
+- **Codex support (experimental).** `install.sh` also writes the rules block into `AGENTS.md`,
+  which Codex and other tools read, and links each skill into `.agents/skills`, where Codex finds
+  them (`$spec-new`). If `CLAUDE.md` is a link to `AGENTS.md`, the block goes in once. The rules no
+  longer name Claude, and they tell an agent whose tool doesn't run the hooks to ask in chat
+  wherever a hook would ask. The sign-off prompts are still Claude Code only. Run
+  `./install.sh <repo> --update` to add both.
+
+- `node scripts/spec-lint.mjs --changes <ref>` lists every spec past draft that changed since the
+  branch left `<ref>`: which sections changed, status moves (approvals included) and new Decisions
+  lines, flagging a content change that came with none. It catches what the hooks can't see (hand
+  edits, merges, other tools), for a reviewer or CI. It fails only if a deprecated spec was edited
+  or one past draft was deleted. The README has a GitHub Actions example.
+
 ## 0.4.0 (2026-10-29)
 
 - A spec's source files move out of the frontmatter into a **Source** section at the end, one

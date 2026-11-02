@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install Recipe-Driven Development into a repo. Safe to re-run: existing files are never overwritten
-# (spec-lint.mjs, specs/README.md, the skills and the CLAUDE.md rules block are refreshed only with --update).
+# (spec-lint.mjs, specs/README.md, the skills and the rules block in CLAUDE.md and AGENTS.md are refreshed only with --update).
 #   ./install.sh <repo> [--update]
 set -euo pipefail
 
@@ -38,7 +38,7 @@ if [[ -f "$target/scripts/spec-lint.mjs" ]]; then
   elif [[ "$update" == --update ]]; then
     echo "  updating from ${installed:-a version before 0.1.0} to $version; see CHANGELOG.md for what changed"
   else
-    echo "  this repo has ${installed:-a version before 0.1.0}; run with --update to refresh spec-lint.mjs, specs/README.md, the skills and the CLAUDE.md rules"
+    echo "  this repo has ${installed:-a version before 0.1.0}; run with --update to refresh spec-lint.mjs, specs/README.md, the skills and the rules in CLAUDE.md and AGENTS.md"
   fi
 fi
 # specs/README.md is the format definition, so it's the kit's to keep current; the rest of specs/ is yours. If the
@@ -68,6 +68,16 @@ EOF
 copy "$bundle" "$target/scripts/spec-lint.mjs" yes
 for s in spec-new spec-review spec-verify spec-migrate; do
   copy "$tpl/.claude/skills/$s/SKILL.md" "$target/.claude/skills/$s/SKILL.md" yes
+  # Codex and other tools that follow the Agent Skills standard look in .agents/skills: link each skill there, so
+  # there's one copy to keep current. A folder of the repo's own already there is left alone.
+  link="$target/.agents/skills/$s"
+  if [[ -L "$link" || -e "$link" ]]; then
+    echo "  keep    .agents/skills/$s"
+  else
+    mkdir -p "$(dirname "$link")"
+    ln -s "../../.claude/skills/$s" "$link"
+    echo "  link    .agents/skills/$s → .claude/skills/$s"
+  fi
 done
 
 # Hooks and kitchen spinner verbs: merge into .claude/settings.json without touching anything else in it.
@@ -117,25 +127,36 @@ for entry in specs/.last-seen.json specs/.map.html; do
 done
 if (( ${#ignored[@]} )); then echo "  append  .gitignore (${ignored[*]})"; else echo "  keep    .gitignore"; fi
 
-# CLAUDE.md: append the rules block once. --update replaces it in place, including a block
-# written before the rename (marked spec-kit:start / spec-kit:end).
-if grep -qsE "(rdd|spec-kit):start" "$target/CLAUDE.md"; then
-  if [[ "$update" == --update ]]; then
-    node - "$target/CLAUDE.md" "$tpl/CLAUDE.spec-rules.md" <<'EOF'
+# CLAUDE.md, and AGENTS.md for Codex and other tools: append the rules block once to each. --update replaces it in
+# place, including a block written before the rename (marked spec-kit:start / spec-kit:end).
+rules() { # rules <file name>
+  local file="$target/$1"
+  if grep -qsE "(rdd|spec-kit):start" "$file"; then
+    if [[ "$update" == --update ]]; then
+      node - "$file" "$tpl/CLAUDE.spec-rules.md" <<'EOF'
 const fs = require("node:fs")
 const [file, rules] = process.argv.slice(2)
 const block = fs.readFileSync(rules, "utf8").trimEnd()
 const text = fs.readFileSync(file, "utf8")
 fs.writeFileSync(file, text.replace(/<!-- (rdd|spec-kit):start -->[\s\S]*?<!-- (rdd|spec-kit):end -->/, () => block))
 EOF
-    echo "  update  CLAUDE.md (spec rules)"
+      echo "  update  $1 (spec rules)"
+    else
+      echo "  keep    $1 (spec rules already present)"
+    fi
   else
-    echo "  keep    CLAUDE.md (spec rules already present)"
+    { [[ -s "$file" ]] && echo; cat "$tpl/CLAUDE.spec-rules.md"; } >> "$file"
+    echo "  append  $1"
   fi
+}
+rules CLAUDE.md
+# A repo where one file links to the other gets the block once.
+if [[ -e "$target/AGENTS.md" && "$(realpath "$target/AGENTS.md")" == "$(realpath "$target/CLAUDE.md")" ]]; then
+  echo "  keep    AGENTS.md (the same file as CLAUDE.md)"
 else
-  { [[ -s "$target/CLAUDE.md" ]] && echo; cat "$tpl/CLAUDE.spec-rules.md"; } >> "$target/CLAUDE.md"
-  echo "  append  CLAUDE.md"
+  rules AGENTS.md
 fi
 
 echo "Done. In Claude Code, run /spec-new <Name>: <what it's for>, or list what you need in specs/outline.md and run /spec-new"
+echo "     In Codex (experimental, no sign-off prompts yet): \$spec-new <Name>: <what it's for>"
 echo "     Without Claude: node scripts/spec-lint.mjs --scaffold, or --new screen <Name>"

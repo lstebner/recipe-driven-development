@@ -66,13 +66,28 @@ rm -rf "$older"
   && pass "install is idempotent" || fail "install is idempotent" "$out2"
 [[ -f "$repo/.claude/skills/spec-new/SKILL.md" && -f "$repo/.claude/skills/spec-review/SKILL.md" && -f "$repo/.claude/skills/spec-verify/SKILL.md" && -f "$repo/.claude/skills/spec-migrate/SKILL.md" ]] \
   && pass "install adds the four skills" || fail "skills installed" "$(ls "$repo/.claude/skills")"
+[[ "$(readlink "$repo/.agents/skills/spec-new")" == ../../.claude/skills/spec-new && -f "$repo/.agents/skills/spec-migrate/SKILL.md" ]] \
+  && pass "  ...and links each into .agents/skills, for Codex" || fail "skills linked" "$(ls -l "$repo/.agents/skills" 2>&1)"
+[[ "$(grep -c rdd:start "$repo/AGENTS.md")" == 1 ]] && cmp -s <(sed -n '/rdd:start/,/rdd:end/p' "$repo/AGENTS.md") "$kit/template/CLAUDE.spec-rules.md" \
+  && pass "install puts the rules in AGENTS.md too, once" || fail "AGENTS.md rules" "$(head -5 "$repo/AGENTS.md" 2>&1)"
+own="$(mktemp -d)"; mkdir -p "$own/.agents/skills/spec-new"; echo mine > "$own/.agents/skills/spec-new/SKILL.md"
+echo "# Mine" > "$own/AGENTS.md"; ln -s AGENTS.md "$own/CLAUDE.md"
+out="$("$kit/install.sh" "$own")"
+[[ "$(cat "$own/.agents/skills/spec-new/SKILL.md")" == mine && -L "$own/.agents/skills/spec-review" ]] \
+  && pass "install leaves a repo's own skill folder in .agents/skills alone" || fail "own skill kept" "$out"
+[[ -L "$own/CLAUDE.md" && "$(grep -c rdd:start "$own/AGENTS.md")" == 1 && "$out" == *"AGENTS.md (the same file as CLAUDE.md)"* ]] \
+  && pass "install writes the rules once when CLAUDE.md links to AGENTS.md" || fail "linked rules files" "$out"$'\n'"$(cat "$own/AGENTS.md")"
+rm -rf "$own"
 old="$(mktemp -d)"
 printf '# Mine\n\n<!-- spec-kit:start -->\nold rules\n<!-- spec-kit:end -->\n\nafter\n' > "$old/CLAUDE.md"
+printf '# Agents\n\n<!-- rdd:start -->\nold rules\n<!-- rdd:end -->\n' > "$old/AGENTS.md"
 mkdir -p "$old/.claude"
 echo '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write|MultiEdit","hooks":[{"type":"command","command":"node \"$CLAUDE_PROJECT_DIR/scripts/spec-lint.mjs\" --hook-pre"}]}]}}' > "$old/.claude/settings.json"
 "$kit/install.sh" "$old" --update >/dev/null
 [[ "$(grep -c rdd:start "$old/CLAUDE.md")" == 1 && "$(grep -c spec-kit "$old/CLAUDE.md")" == 0 && "$(grep -c '^after$' "$old/CLAUDE.md")" == 1 ]] \
   && pass "--update replaces an old spec-kit rules block in place" || fail "--update rules block" "$(cat "$old/CLAUDE.md")"
+[[ "$(grep -c '^old rules$' "$old/AGENTS.md")" == 0 && "$(grep -c rdd:start "$old/AGENTS.md")" == 1 && "$(head -1 "$old/AGENTS.md")" == "# Agents" ]] \
+  && pass "  ...and the one in AGENTS.md" || fail "--update AGENTS.md rules" "$(cat "$old/AGENTS.md")"
 [[ "$(grep -c spec-lint.mjs "$old/.claude/settings.json")" == 6 ]] && pass "re-install adds the missing hooks" || fail "hook merge" "$(cat "$old/.claude/settings.json")"
 node -e 'const s = require(process.argv[1]); process.exit(s.spinnerVerbs?.mode === "replace" && s.spinnerVerbs.verbs.includes("Checking the pantry") ? 0 : 1)' "$repo/.claude/settings.json" \
   && pass "install sets kitchen spinner verbs" || fail "spinner verbs" "$(cat "$repo/.claude/settings.json")"
@@ -963,6 +978,51 @@ gi="$(mktemp -d)"; printf 'node_modules\r\n/specs/.last-seen.json \r\n' > "$gi/.
 for i in 1 2 3; do "$kit/install.sh" "$gi" >/dev/null; done
 [[ "$(grep -c "last-seen" "$gi/.gitignore")" == 1 ]] && pass "  ...in a large .gitignore too" || fail "gitignore dup, large file" "$(grep -c last-seen "$gi/.gitignore") entries"
 rm -rf "$gi"
+
+echo "changes since a git ref"
+# A kit installed in a subfolder of a git repo, so paths from the repo root and from the kit's root differ.
+gr="$(mktemp -d)"; app="$gr/app"; mkdir -p "$app"
+g() { git -C "$gr" -c user.name=t -c user.email=t@t -c init.defaultBranch=main "$@" >/dev/null 2>&1; }
+spec() { # spec <file> <status> <rule> [decision]
+  mkdir -p "$(dirname "$app/specs/$1")"
+  printf -- '---\nstatus: %s\n---\n\n# %s\n\n## Goal\nA thing.\n\n## Rules\n- R1: %s\n\n## Decisions\n%s\n' "$2" "$(basename "$1" .md)" "$3" "${4:-}" > "$app/specs/$1"
+}
+changes() { node "$app/scripts/spec-lint.mjs" --root "$app" --changes "$@" 2>&1; }
+g init; "$kit/install.sh" "$app" >/dev/null
+spec screens/Kept.md approved "Shows a title."
+spec screens/Gone.md approved "Shows a title."
+spec screens/Frozen.md deprecated "Shows a title." "- 2026-10-01: Deprecated: off the menu."
+spec screens/Rough.md draft "Shows a title."
+spec screens/Built.md implemented "Shows a title."
+g add -A; g commit -m base; g switch -c feat
+out="$(changes main)"; [[ $? -eq 0 && "$out" == *": none past draft"* ]] && pass "--changes with nothing changed says so" || fail "--changes none" "$out"
+spec screens/Kept.md approved "Shows a title and a price." "- 2026-11-02: Accepted A1 (show the price): listeners asked."
+spec screens/Rough.md approved "Shows a title, roughly."
+spec screens/New.md approved "Shows something."
+spec screens/Built.md verified "Shows a title."
+echo "- extra" >> "$app/specs/screens/Built.md"  # outside every section that counts: no content change
+g add -A; g commit -m work
+g switch main; spec screens/Later.md approved "Added on main after the branch."; g add -A; g commit -m later; g switch feat
+out="$(changes main)"; code=$?
+[[ $code -eq 0 && "$out" == *$'Kept (approved)\n  changed: Rules\n  decisions:\n    - 2026-11-02: Accepted A1'* ]] \
+  && pass "--changes lists what changed in a spec past draft, with its new Decisions lines" || fail "--changes content" "$out"
+[[ "$out" == *"Rough: draft → approved"* && "$out" == *"New: new → approved"* && "$out" == *"Built: implemented → verified"* && "$out" != *"Built: implemented → verified"$'\n  changed'* ]] \
+  && pass "  ...and every status move, including a new spec's" || fail "--changes status" "$out"
+[[ "$out" != *Later* && "$out" != *Gone* && "$out" != *Frozen* ]] && pass "  ...comparing with where the branch left main, not main's newer commits" || fail "--changes merge base" "$out"
+spec screens/Kept.md approved "Shows a title and a price, and a cover." "- 2026-11-02: Accepted A1 (show the price): listeners asked."
+out="$(changes main)"; [[ "$out" == *$'  changed: Rules\n  decisions:\n    - 2026-11-02'* ]] && pass "  ...and uncommitted changes, for a check before committing" || fail "--changes uncommitted" "$out"
+git -C "$gr" checkout -q -- app/specs/screens/Kept.md
+spec screens/Built.md implemented "Shows a title, quietly changed."
+out="$(changes main)"; [[ "$out" == *$'Built (implemented)\n  changed: Rules\n  decisions: none new'* ]] \
+  && pass "  ...saying when a change came with no new Decisions line" || fail "--changes no decision" "$out"
+rm "$app/specs/screens/Gone.md"; spec screens/Frozen.md deprecated "Shows a title." "- 2026-10-01: Deprecated: off the menu, really."
+out="$(changes main)"; code=$?
+[[ $code -eq 1 && "$out" == *"❌ Gone was approved and has been deleted"* && "$out" == *"❌ Frozen is deprecated but was edited"* && "$out" == *"2 error(s)"* ]] \
+  && pass "--changes fails when a spec past draft is deleted or a deprecated one edited" || fail "--changes errors" "$out"
+spec screens/Frozen.md approved "Shows a title." "- 2026-10-01: Deprecated: off the menu."
+out="$(changes main)"; [[ "$out" == *"Frozen: deprecated → approved"* && "$out" != *"Frozen is deprecated"* ]] && pass "  ...but not when one is brought back" || fail "--changes revival" "$out"
+out="$(changes nowhere)"; [[ $? -eq 1 && "$out" == *"can't compare with \"nowhere\""* ]] && pass "--changes with an unknown ref says so" || fail "--changes bad ref" "$out"
+rm -rf "$gr"
 
 echo "release script"
 rel="$(mktemp -d)"; mkdir -p "$rel/template/scripts"
