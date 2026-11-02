@@ -2,9 +2,15 @@
 ## Specs (`specs/`): Recipe-Driven Development
 
 `specs/` is the source of truth for every screen, component, flow, data model, API and policy
-that has a spec. The user is the head chef and decides the recipe (the spec); Claude is the cook
-and follows it; the user tastes the result before it's called done. The format is defined in
+that has a spec. The user is the head chef and decides the recipe (the spec); you're the cook
+and follow it; the user tastes the result before it's called done. The format is defined in
 `specs/README.md`; read it before writing or changing a spec.
+
+- **Sign-off prompts:** in Claude Code, hooks put each of the user's decisions below in front of
+  them as a permission prompt. If your tool doesn't run those hooks, no prompt appears: wherever
+  these rules say a hook asks the user, ask them yourself in chat, saying exactly what will
+  change, and make the edit only after a clear yes to that change. An earlier yes to something
+  else, or no answer, isn't approval.
 
 - **Before any work a spec covers**, read that spec, every spec it references (`[[Name]]`,
   `[[screen:…]]`, `[[flow:…]]`, `[[model:…]]`, `[[api:…]]`, `[[policy:…]]`), and
@@ -29,7 +35,7 @@ and follows it; the user tastes the result before it's called done. The format i
   is a backstop, not permission. Never change spec files through Bash; a second hook asks the user
   if a shell command looks like it does.
 - **Status:** only the user moves a spec to `approved` (they say so, you set it, and they confirm
-  the prompt). Claude may set `implemented` once it's built. Claude may propose `verified` only
+  the prompt). You may set `implemented` once it's built. You may propose `verified` only
   after `/spec-verify` writes a report with every rule ✅ or 👤; the hook refuses it otherwise, and
   asks the user to confirm (the taste test) when the report passes. Before setting it, tell the
   user in 2–5 bullets what to try, including every 👤 row.
@@ -43,8 +49,8 @@ and follows it; the user tastes the result before it's called done. The format i
 - **Deprecating** is the user's decision, like approving. When they ask, set `status: deprecated`,
   `deprecated: <today's date, YYYY-MM-DD>` and `replaced_by: <Name>` (a live spec of the same
   kind, past draft) if something replaces it, and add a dated line under `## Decisions` saying
-  why, all in one edit and changing nothing else (a Write of the whole file, or a MultiEdit, since
-  one Edit can't reach both); the hook asks them to confirm. Then remove it from
+  why, all in one edit and changing nothing else (rewrite the whole file, or make one edit with
+  both changes, since a single replacement can't reach both); the hook asks them to confirm. Then remove it from
   `specs/outline.md`. A draft isn't deprecated: delete it (and its outline entry) instead. You
   may suggest deprecating, but never do it unasked.
 - **Trade-offs:** when you settle on a good-enough way of meeting a spec and a better one would
@@ -80,6 +86,7 @@ and follows it; the user tastes the result before it's called done. The format i
   hook at the start of a session and with the user's messages: approvals, hand edits, revivals,
   deprecations. Tell the user briefly what you noticed and offer the next step it calls for, per
   `specs/README.md` ("Noticing your changes"). Don't start building or verifying unasked.
-- spec-lint runs automatically after edits. Run `node scripts/spec-lint.mjs --fix` to regenerate
+- spec-lint runs automatically after edits in Claude Code; with other tools, run
+  `node scripts/spec-lint.mjs` yourself after changing a spec. Run `--fix` to regenerate
   `Used by`, and `--summary` for an overview.
 <!-- rdd:end -->

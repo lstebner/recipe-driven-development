@@ -76,8 +76,8 @@ deprecated.
 ## Installing
 
 ```
-./install.sh <repo>            # adds specs/, scripts/spec-lint.mjs, four skills, hooks, CLAUDE.md rules
-./install.sh <repo> --update   # also refreshes spec-lint.mjs, specs/README.md, the skills and the CLAUDE.md rules
+./install.sh <repo>            # adds specs/, scripts/spec-lint.mjs, four skills, hooks, CLAUDE.md and AGENTS.md rules
+./install.sh <repo> --update   # also refreshes spec-lint.mjs, specs/README.md, the skills and the rules
 ./test/run.sh                  # end-to-end check in a throwaway repo
 ```
 
@@ -102,14 +102,49 @@ What gets installed into the repo:
 | `specs/outline.md` | a quick list of every screen, component, flow, model, API and policy you know you'll need; `--scaffold` turns it into draft specs |
 | `specs/_templates/` | `screen.md`, `component.md`, `flow.md`, `model.md`, `api.md`, `policy.md` |
 | `specs/tokens.md` | design tokens, referenced as `$name` |
-| `scripts/spec-lint.mjs` | lint (`--fix` regenerates Used by and links outline entries to their specs, `--summary` prints a dashboard, `--hash` fingerprints a spec, `--refs` lists every spec that relies on one, `--map` draws the layouts and how specs connect as a page to open in a browser), scaffolding (`--new <kind> <Name>`, `--scaffold` from the outline); also the hook entry point. Node ≥ 18, no dependencies |
+| `scripts/spec-lint.mjs` | lint (`--fix` regenerates Used by and links outline entries to their specs, `--summary` prints a dashboard, `--hash` fingerprints a spec, `--refs` lists every spec that relies on one, `--changes <ref>` lists what changed since a branch left main, `--map` draws the layouts and how specs connect as a page to open in a browser), scaffolding (`--new <kind> <Name>`, `--scaffold` from the outline); also the hook entry point. Node ≥ 18, no dependencies |
 | `.claude/settings.json` | **PreToolUse** hooks ask you before protected content in a non-draft spec changes (naming the amendment when Claude applies one), before a shell command that looks like it writes to `specs/`, before anything is marked `verified` (which is refused outright without a passing report), and before a spec is deprecated (any later edit to a deprecated spec is refused). **PostToolUse** hooks send lint errors back to Claude, remind it when it edits the source of a deprecated spec, and record its own changes to specs. **SessionStart** and **UserPromptSubmit** hooks tell Claude which specs changed outside its own edits (your approvals and edits, or a teammate's after a pull), using `specs/.last-seen.json`, which install adds to `.gitignore` (along with the generated `specs/.map.html`). Also kitchen-themed `spinnerVerbs` ("Checking the pantry", "Mincing", "Deglazing"…), unless the repo already sets its own |
 | `.claude/skills/spec-new`, `spec-review`, `spec-verify`, `spec-migrate` | `/spec-new [kind] <Name>[: what it's for]`, `/spec-review <Name>`, `/spec-verify <Name>`, `/spec-migrate [Name]` |
-| `CLAUDE.md` | rules block between `rdd:start` and `rdd:end` markers |
+| `.agents/skills/` | a link to each skill, where Codex and other tools that follow the Agent Skills standard look for them (a folder of your own already there is left alone) |
+| `CLAUDE.md`, `AGENTS.md` | rules block between `rdd:start` and `rdd:end` markers; `AGENTS.md` is read by Codex and other tools. When one file links to the other, the block goes in once |
 
 Limits: the shell-command hook is a heuristic. It catches the usual ways of writing files
 (`sed -i`, redirects, `mv`, `cp`, `rm`, `tee`, inline scripts and so on), but a determined command
 can still get past it.
+
+## Checking changes before they merge
+
+The hooks only see what happens in a Claude Code session. A hand edit, a merge or another tool can
+change a spec without any prompt. `node scripts/spec-lint.mjs --changes main` lists every spec
+past draft that changed since your branch left `main`: which sections changed, any status move
+(including approvals) and the new lines under Decisions. A content change with no new Decisions
+line says so, since an accepted amendment always adds one. The command can't tell who made a
+change, so it reports and leaves the judgement to whoever reviews the branch. It fails only on
+what's never right: an edit to a deprecated spec, or a spec past draft that was deleted instead of
+deprecated. It includes uncommitted changes, so it works before a commit too.
+
+In GitHub Actions, check out the full history so it can find where the branch started:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+- run: node scripts/spec-lint.mjs
+- run: node scripts/spec-lint.mjs --changes origin/${{ github.base_ref }}
+```
+
+## Using with Codex (experimental)
+
+The install works for [Codex](https://developers.openai.com/codex) too, but it hasn't been tested
+nearly as much as the Claude Code route. The specs, lint and `--changes` work the same.
+Codex reads the rules from `AGENTS.md` and finds the skills through `.agents/skills`, so
+`$spec-new AlbumDetail: let a listener buy an album` works as `/spec-new` does in Claude Code.
+
+What you don't get yet are the **sign-off prompts**. The hooks are written for Claude Code, and
+Codex's hooks can block an edit but can't yet stop and ask you. Until they can, the rules tell the
+agent to ask you in chat before changing anything you'd sign off on, which relies on it following
+them. Nothing stops it. Run `--changes` in CI as a backstop, and say so in an issue if you try it:
+Codex support will grow from what people find.
 
 ## Using in an established codebase
 

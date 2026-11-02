@@ -10,6 +10,9 @@
 //   --components <Name>  print the fingerprint of each shared component a spec is built from (goes in its report too)
 //   --map [Name]   write specs/.map.html: each screen's Layout drawn as nested boxes, and a graph of every spec and
 //                  what it relies on, coloured by status; with a Name, the page opens on that spec
+//   --changes <ref>  list every spec past draft that changed since this branch left a git ref (content, status,
+//                  new Decisions lines), for review in CI or before a commit; exit 1 if a deprecated spec was edited or
+//                  one past draft was deleted
 //   --new <kind> <Name>  create a draft spec from specs/_templates/<kind>.md
 //   --scaffold     create a draft spec for every entry in specs/outline.md that doesn't have one yet, and link each entry to its spec
 //   --hook-pre     Claude Code PreToolUse hook (Edit/Write): ask the user before protected spec content
@@ -23,6 +26,7 @@
 //                  looked (an approval, a hand edit, a git pull), and what that means it should offer to do next
 //   --version      print the kit version
 //   --root <dir>   repo root (default: $CLAUDE_PROJECT_DIR, else the parent of this script's directory)
+import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, statSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -1208,6 +1212,86 @@ const scaffold = () => {
   return outline.problems.length || results.some((r) => r.error) ? 1 : 0
 }
 
+// ---------- changes since a git ref ----------
+
+// The hooks only see edits made through Claude Code. This compares the specs with how they were where this branch
+// left a git ref, whoever changed them, so a reviewer sees every change to a spec past draft. It reports rather than
+// judges: an approved spec may change through an accepted amendment or by the user's own hand, and nothing in git
+// says which. It fails only on what's never right: a deprecated spec that was edited, or a spec past draft that was
+// deleted rather than deprecated.
+const git = (...argv) => execFileSync("git", argv, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+const DATED = /^[-*]\s+\d{4}-\d{2}-\d{2}\b/
+const changesSince = (ref) => {
+  let base
+  try {
+    base = git("merge-base", ref, "HEAD").trim()
+  } catch (error) {
+    return { error: `can't compare with "${ref}": ${String(error.stderr || error.message).trim()}` }
+  }
+  // Spec files by path from the repo root: tokens.md, and one folder per kind (not _templates or _reports).
+  const isSpec = (file) => specKind(path.join(root, file)) !== null
+  const before = new Map(git("ls-tree", "-r", "--name-only", base, "--", "specs").split("\n").filter(isSpec).map((f) => [f, normalize(git("show", `${base}:./${f}`))]))
+  const { all, tokens } = loadAll()
+  const after = new Map([...all, ...(tokens ? [tokens] : [])].map((s) => [rel(s.file).split(path.sep).join("/"), s.raw]))
+  // What a spec asks for, section by section: protectedParts without its lifecycle (as in hashOf).
+  const intent = (text) => {
+    const { status, source, deprecated, replaced_by, ...fm } = parseFrontmatter(text).data ?? {}
+    return { ...protectedParts(text), frontmatter: JSON.stringify(fm) }
+  }
+  const statusOf = (text) => parseFrontmatter(text).data?.status ?? "draft"
+  const dated = (text) => (sectionTexts(text).decisions?.text ?? "").split("\n").filter((l) => DATED.test(l))
+  const entries = []
+  const errors = []
+  for (const file of [...new Set([...before.keys(), ...after.keys()])].sort()) {
+    const old = before.get(file)
+    const now = after.get(file)
+    if (old === now) continue
+    const name = path.basename(file, ".md")
+    const from = old == null ? null : statusOf(old)
+    const to = now == null ? null : statusOf(now)
+    // A draft changes freely; only a new status is worth a reviewer's eye.
+    if (from == null || from === "draft") {
+      if (to !== "draft" && to != null) entries.push({ name, line: `${name}: ${from ?? "new"} → ${to}` })
+      continue
+    }
+    if (to == null) {
+      errors.push(`${name} was ${from} and has been deleted: a spec past draft is deprecated, not deleted, so the record stays (${file})`)
+      continue
+    }
+    if (from === "deprecated" && to === "deprecated") {
+      errors.push(`${name} is deprecated but was edited: deprecated specs are frozen; to bring it back, set its status (${file})`)
+      continue
+    }
+    const oldParts = intent(old)
+    const newParts = intent(now)
+    const changed = [...new Set([...Object.keys(oldParts), ...Object.keys(newParts)])].filter((k) => oldParts[k] !== newParts[k])
+    if (!changed.length && from === to) continue
+    const seen = new Set(dated(old))
+    const decided = dated(now).filter((l) => !seen.has(l))
+    entries.push({
+      name,
+      line: [
+        from === to ? `${name} (${to})` : `${name}: ${from} → ${to}`,
+        ...(changed.length ? [`  changed: ${changed.join(", ")}`] : []),
+        ...(decided.length ? ["  decisions:", ...decided.map((l) => `    ${l}`)] : changed.length ? ["  decisions: none new"] : []),
+      ].join("\n"),
+    })
+  }
+  return { base, entries, errors }
+}
+
+const changesReport = (ref) => {
+  const result = changesSince(ref)
+  if (result.error) return result
+  const { base, entries, errors } = result
+  const head = `spec changes since ${ref} (${base.slice(0, 7)})`
+  if (!entries.length && !errors.length) return { text: `${head}: none past draft`, failed: false }
+  return {
+    text: [head, "", ...entries.map((e) => e.line), ...(errors.length ? ["", ...errors.map((e) => `❌ ${e}`), "", `${errors.length} error(s)`] : [])].join("\n"),
+    failed: errors.length > 0,
+  }
+}
+
 // ---------- hooks ----------
 
 const readStdin = () => {
@@ -1645,6 +1729,14 @@ else if (has("--refs")) {
     process.exit(1)
   }
   console.log(text)
+} else if (has("--changes")) {
+  const { text, failed, error } = changesReport(argOf("--changes") ?? "")
+  if (error) {
+    console.error(error)
+    process.exit(1)
+  }
+  console.log(text)
+  process.exit(failed ? 1 : 0)
 } else if (has("--map")) {
   const specs = loadAll()
   const focus = argOf("--map")?.startsWith("--") ? null : argOf("--map")
